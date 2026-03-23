@@ -4,14 +4,12 @@ Não há API pública — os ZIPs são baixados manualmente em:
   https://dadosabertos.rfb.gov.br/CNPJ/
 
 Estrutura esperada em data/cnpj/:
-  data/cnpj/{YYYY-MM}/Empresas0.zip
-  data/cnpj/{YYYY-MM}/Empresas1.zip
-  ...
-  data/cnpj/{YYYY-MM}/Socios0.zip
-  data/cnpj/{YYYY-MM}/Estabelecimentos0.zip
+  data/cnpj/{YYYY-MM}/Empresas0.zip ... Empresas9.zip
+  data/cnpj/{YYYY-MM}/Socios0.zip   ... Socios9.zip
+  data/cnpj/{YYYY-MM}/Estabelecimentos0.zip ...
   data/cnpj/{YYYY-MM}/Cnaes.zip
-  data/cnpj/{YYYY-MM}/Municipios.zip   ← integrado com IBGE
-  data/cnpj/{YYYY-MM}/Paises.zip       ← integrado com IBGE (futuro)
+  data/cnpj/{YYYY-MM}/Municipios.zip
+  data/cnpj/{YYYY-MM}/Paises.zip
   data/cnpj/{YYYY-MM}/Naturezas.zip
   data/cnpj/{YYYY-MM}/Qualificacoes.zip
   data/cnpj/{YYYY-MM}/Motivos.zip
@@ -19,14 +17,14 @@ Estrutura esperada em data/cnpj/:
 
 Este script:
   1. Descobre todos os snapshots YYYY-MM disponíveis
-  2. Extrai cada ZIP para um diretório temporário
-  3. Lê os CSVs (sem cabeçalho, sep=";", encoding=latin-1)
-  4. Salva CSVs normalizados em data/cnpj/{YYYY-MM}/csv/
-     com cabeçalho e encoding utf-8-sig
+  2. Extrai cada ZIP em um diretório temporário (um ZIP por vez — RAM segura)
+  3. Processa em chunks de CHUNK_SIZE linhas e grava no CSV de saída
+     incrementalmente (nunca carrega o arquivo inteiro em memória)
+  4. Salva CSVs normalizados em data/cnpj/{YYYY-MM}/csv/ com cabeçalho
+     e encoding utf-8-sig
 """
 
 import csv
-import io
 import logging
 import os
 import shutil
@@ -39,25 +37,26 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
+_DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "50000"))   # linhas por chunk
+SNAPSHOT_FMT = "%Y-%m"
 
 FONTE = {
     "fonte_nome":      "Receita Federal do Brasil",
     "fonte_descricao": "Dados Abertos CNPJ — Cadastro Nacional da Pessoa Jurídica",
     "fonte_url":       "https://dadosabertos.rfb.gov.br/CNPJ/",
-    "fonte_licenca":   "Dados Abertos — https://www.gov.br/receitafederal/pt-br/assuntos/orientacao-tributaria/cadastros/cnpj/dados-publicos-cnpj",
+    "fonte_licenca":   "Dados Abertos — https://www.gov.br/receitafederal",
 }
 
-# ── Schemas (sem cabeçalho na fonte) ─────────────────────────────────────────
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 DOMAIN_SCHEMAS = {
-    # padrão: codigo | descricao
-    "cnaes":          ["codigo_cnae",          "descricao_cnae"],
-    "naturezas":      ["codigo_natureza",       "descricao_natureza"],
-    "qualificacoes":  ["codigo_qualificacao",   "descricao_qualificacao"],
-    "motivos":        ["codigo_motivo",         "descricao_motivo"],
-    "municipios":     ["codigo_municipio_rf",   "nome_municipio"],   # cruzado com IBGE pelo nome
-    "paises":         ["codigo_pais",           "nome_pais"],
+    "cnaes":         ["codigo_cnae",        "descricao_cnae"],
+    "naturezas":     ["codigo_natureza",    "descricao_natureza"],
+    "qualificacoes": ["codigo_qualificacao","descricao_qualificacao"],
+    "motivos":       ["codigo_motivo",      "descricao_motivo"],
+    "municipios_rf": ["codigo_municipio_rf","nome_municipio"],
+    "paises":        ["codigo_pais",        "nome_pais"],
 }
 
 EMPRESAS_COLS = [
@@ -93,21 +92,10 @@ SIMPLES_COLS = [
     "data_opcao_mei", "data_exclusao_mei",
 ]
 
-# grupo → (padrão de arquivo, colunas)
-MAIN_SCHEMAS = {
-    "empresas":         ("*EMPRE*",    EMPRESAS_COLS),
-    "socios":           ("*SOCIO*",    SOCIOS_COLS),
-    "estabelecimentos": ("*ESTABELE*", ESTABELECIMENTOS_COLS),
-    "simples":          ("*SIMPLES*",  SIMPLES_COLS),
-}
 
-SNAPSHOT_FMT = "%Y-%m"
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers gerais ────────────────────────────────────────────────────────────
 
 def _discover_snapshots() -> list[tuple[str, Path]]:
-    """Retorna snapshots YYYY-MM que contenham pelo menos um ZIP."""
     result = []
     if not DATA_DIR.exists():
         return result
@@ -124,32 +112,18 @@ def _discover_snapshots() -> list[tuple[str, Path]]:
 
 
 def _extract_zip(zip_path: Path, dest: Path) -> list[Path]:
-    """Extrai um ZIP e retorna lista de arquivos extraídos."""
-    extracted = []
+    """Extrai um ZIP e retorna os arquivos extraídos."""
+    out = []
     with zipfile.ZipFile(zip_path, "r") as zf:
         for name in zf.namelist():
             zf.extract(name, dest)
-            extracted.append(dest / name)
-    return extracted
-
-
-def _read_rf_csv(path: Path, columns: list[str]) -> pd.DataFrame:
-    """Lê CSV da Receita Federal: sem cabeçalho, sep=;, latin-1."""
-    return pd.read_csv(
-        path,
-        sep=";",
-        encoding="latin-1",
-        header=None,
-        names=columns,
-        dtype=str,
-        keep_default_na=False,
-    )
+            out.append(dest / name)
+    return out
 
 
 def _normalize_date(s: str) -> str:
-    """00000000 → '' | 20230115 → 2023-01-15"""
     s = s.strip()
-    if not s or s == "0" or s == "00000000":
+    if not s or s in ("0", "00000000"):
         return ""
     if len(s) == 8 and s.isdigit():
         return f"{s[:4]}-{s[4:6]}-{s[6:]}"
@@ -157,160 +131,164 @@ def _normalize_date(s: str) -> str:
 
 
 def _normalize_capital(s: str) -> str:
-    """'120000000000,00' → '120000000000.00'"""
     s = s.strip()
     if not s:
         return "0.00"
     return s.replace(".", "").replace(",", ".")
 
 
-def _normalize_cnpj(basico: str, ordem: str = "0001", dv: str = "00") -> str:
-    return f"{basico.zfill(8)}{ordem.zfill(4)}{dv.zfill(2)}"
+def _normalize_cnpj(basico: str, ordem: str, dv: str) -> str:
+    return f"{str(basico).zfill(8)}{str(ordem).zfill(4)}{str(dv).zfill(2)}"
 
 
-def _add_fonte(df: pd.DataFrame, url_origem: str, snapshot: str) -> pd.DataFrame:
+def _fonte_cols(url_origem: str, snapshot: str) -> dict:
+    return {
+        **FONTE,
+        "fonte_url_origem":  url_origem,
+        "fonte_snapshot":    snapshot,
+        "fonte_coletado_em": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def _iter_rf_chunks(path: Path, columns: list[str], chunk_size: int = _DEFAULT_CHUNK_SIZE) -> "Iterator[pd.DataFrame]":
+    """Gerador de chunks de um CSV da Receita Federal."""
+    yield from pd.read_csv(
+        path,
+        sep=";",
+        encoding="latin-1",
+        header=None,
+        names=columns,
+        dtype=str,
+        keep_default_na=False,
+        chunksize=chunk_size,
+    )
+
+
+class _CsvWriter:
+    """Abre/cria o CSV de saída e grava chunks incrementalmente."""
+
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._path    = path
+        self._file    = open(path, "w", newline="", encoding="utf-8-sig")
+        self._writer  = None
+        self._rows    = 0
+
+    def write(self, df: pd.DataFrame) -> None:
+        if df.empty:
+            return
+        if self._writer is None:
+            self._writer = csv.DictWriter(self._file, fieldnames=list(df.columns))
+            self._writer.writeheader()
+        self._writer.writerows(df.to_dict("records"))
+        self._rows += len(df)
+
+    def close(self) -> int:
+        self._file.close()
+        return self._rows
+
+
+# ── Processadores ─────────────────────────────────────────────────────────────
+
+def _process_domain(out_name: str, columns: list[str], zip_path: Path,
+                    out_dir: Path, snapshot: str, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> None:
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        files = _extract_zip(zip_path, tmp)
+        writer = _CsvWriter(out_dir / f"{out_name}.csv")
+        fonte  = _fonte_cols(FONTE["fonte_url"], snapshot)
+        for f in files:
+            try:
+                for chunk in _iter_rf_chunks(f, columns, chunk_size):
+                    for k, v in fonte.items():
+                        chunk[k] = v
+                    writer.write(chunk)
+            except Exception as exc:
+                log.error(f"    ERRO ao ler {f.name}: {exc}", exc_info=True)
+        total = writer.close()
+        log.info(f"    → {out_name}.csv  ({total:,} linhas)")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _process_main(out_name: str, columns: list[str], zip_paths: list[Path],
+                  out_dir: Path, snapshot: str,
+                  transform_fn=None, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> None:
+    """
+    Processa arquivos numerados (Empresas0..N, Socios0..N, etc.)
+    gravando diretamente no CSV de saída chunk a chunk.
+    Nunca acumula mais de chunk_size linhas em memória.
+    """
+    writer = _CsvWriter(out_dir / f"{out_name}.csv")
+    fonte  = _fonte_cols(FONTE["fonte_url"], snapshot)
+
+    for zip_idx, zip_path in enumerate(zip_paths):
+        log.info(f"    {zip_path.name}  ({zip_idx+1}/{len(zip_paths)})")
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            files = _extract_zip(zip_path, tmp)
+            for f in files:
+                chunk_num = 0
+                try:
+                    for chunk in _iter_rf_chunks(f, columns, chunk_size):
+                        chunk_num += 1
+                        if transform_fn:
+                            chunk = transform_fn(chunk)
+                        for k, v in fonte.items():
+                            chunk[k] = v
+                        writer.write(chunk)
+                except Exception as exc:
+                    log.error(
+                        f"    ERRO em {zip_path.name} / {f.name} "
+                        f"(chunk {chunk_num}): {exc}",
+                        exc_info=True,
+                    )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    total = writer.close()
+    log.info(f"    → {out_name}.csv  ({total:,} linhas)")
+
+
+# ── Transformações específicas ────────────────────────────────────────────────
+
+def _transform_empresas(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    coletado_em = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for k, v in FONTE.items():
-        df[k] = v
-    df["fonte_url_origem"]  = url_origem
-    df["fonte_snapshot"]    = snapshot
-    df["fonte_coletado_em"] = coletado_em
+    df["capital_social"] = df["capital_social"].apply(_normalize_capital)
     return df
 
 
-def _save_csv(df: pd.DataFrame, out_path: Path) -> None:
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_path, index=False, encoding="utf-8-sig")
-    log.info(f"    → {out_path.name}  ({len(df):,} linhas, {len(df.columns)} colunas)")
+def _transform_socios(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["data_entrada"] = df["data_entrada"].apply(_normalize_date)
+    return df
 
 
-# ── Processamento por grupo ───────────────────────────────────────────────────
-
-def _process_domain(name: str, columns: list[str], zip_path: Path,
-                    out_dir: Path, snapshot: str) -> None:
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        files = _extract_zip(zip_path, tmp)
-        frames = []
-        for f in files:
-            try:
-                df = _read_rf_csv(f, columns)
-                frames.append(df)
-            except Exception as exc:
-                log.warning(f"    Erro ao ler {f.name}: {exc}")
-        if not frames:
-            return
-        df = pd.concat(frames, ignore_index=True)
-        df = _add_fonte(df, FONTE["fonte_url"], snapshot)
-        _save_csv(df, out_dir / f"{name}.csv")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+def _transform_estabelecimentos(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["data_situacao_cadastral"] = df["data_situacao_cadastral"].apply(_normalize_date)
+    df["data_inicio_atividade"]   = df["data_inicio_atividade"].apply(_normalize_date)
+    df["data_situacao_especial"]  = df["data_situacao_especial"].apply(_normalize_date)
+    df["cnpj"] = (
+        df["cnpj_basico"].str.zfill(8)
+        + df["cnpj_ordem"].str.zfill(4)
+        + df["cnpj_dv"].str.zfill(2)
+    )
+    return df
 
 
-def _process_empresas(zip_paths: list[Path], out_dir: Path, snapshot: str) -> None:
-    frames = []
-    for zip_path in zip_paths:
-        tmp = Path(tempfile.mkdtemp())
-        try:
-            files = _extract_zip(zip_path, tmp)
-            for f in files:
-                try:
-                    df = _read_rf_csv(f, EMPRESAS_COLS)
-                    # normaliza capital social
-                    df["capital_social"] = df["capital_social"].apply(_normalize_capital)
-                    frames.append(df)
-                except Exception as exc:
-                    log.warning(f"    Erro ao ler {f.name}: {exc}")
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    if not frames:
-        return
-    df = pd.concat(frames, ignore_index=True)
-    df = _add_fonte(df, FONTE["fonte_url"], snapshot)
-    _save_csv(df, out_dir / "empresas.csv")
-
-
-def _process_socios(zip_paths: list[Path], out_dir: Path, snapshot: str) -> None:
-    frames = []
-    for zip_path in zip_paths:
-        tmp = Path(tempfile.mkdtemp())
-        try:
-            files = _extract_zip(zip_path, tmp)
-            for f in files:
-                try:
-                    df = _read_rf_csv(f, SOCIOS_COLS)
-                    df["data_entrada"] = df["data_entrada"].apply(_normalize_date)
-                    frames.append(df)
-                except Exception as exc:
-                    log.warning(f"    Erro ao ler {f.name}: {exc}")
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    if not frames:
-        return
-    df = pd.concat(frames, ignore_index=True)
-    df = _add_fonte(df, FONTE["fonte_url"], snapshot)
-    _save_csv(df, out_dir / "socios.csv")
-
-
-def _process_estabelecimentos(zip_paths: list[Path], out_dir: Path, snapshot: str) -> None:
-    frames = []
-    for zip_path in zip_paths:
-        tmp = Path(tempfile.mkdtemp())
-        try:
-            files = _extract_zip(zip_path, tmp)
-            for f in files:
-                try:
-                    df = _read_rf_csv(f, ESTABELECIMENTOS_COLS)
-                    df["data_situacao_cadastral"] = df["data_situacao_cadastral"].apply(_normalize_date)
-                    df["data_inicio_atividade"]   = df["data_inicio_atividade"].apply(_normalize_date)
-                    df["data_situacao_especial"]  = df["data_situacao_especial"].apply(_normalize_date)
-                    df["cnpj"] = df.apply(
-                        lambda r: _normalize_cnpj(r["cnpj_basico"], r["cnpj_ordem"], r["cnpj_dv"]),
-                        axis=1,
-                    )
-                    frames.append(df)
-                except Exception as exc:
-                    log.warning(f"    Erro ao ler {f.name}: {exc}")
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-    if not frames:
-        return
-    df = pd.concat(frames, ignore_index=True)
-    df = _add_fonte(df, FONTE["fonte_url"], snapshot)
-    _save_csv(df, out_dir / "estabelecimentos.csv")
-
-
-def _process_simples(zip_path: Path, out_dir: Path, snapshot: str) -> None:
-    tmp = Path(tempfile.mkdtemp())
-    try:
-        files = _extract_zip(zip_path, tmp)
-        frames = []
-        for f in files:
-            try:
-                df = _read_rf_csv(f, SIMPLES_COLS)
-                for col in ["data_opcao_simples", "data_exclusao_simples",
-                            "data_opcao_mei", "data_exclusao_mei"]:
-                    df[col] = df[col].apply(_normalize_date)
-                frames.append(df)
-            except Exception as exc:
-                log.warning(f"    Erro ao ler {f.name}: {exc}")
-        if not frames:
-            return
-        df = pd.concat(frames, ignore_index=True)
-        df = _add_fonte(df, FONTE["fonte_url"], snapshot)
-        _save_csv(df, out_dir / "simples.csv")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+def _transform_simples(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    for col in ["data_opcao_simples", "data_exclusao_simples",
+                "data_opcao_mei", "data_exclusao_mei"]:
+        df[col] = df[col].apply(_normalize_date)
+    return df
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run():
-    log.info("[cnpj] Iniciando extração de ZIPs")
+def run(chunk_size: int = _DEFAULT_CHUNK_SIZE):
+    log.info(f"[cnpj] Iniciando extração de ZIPs  (chunk_size={chunk_size:,})")
     snapshots = _discover_snapshots()
     if not snapshots:
         log.warning(f"  Nenhum snapshot encontrado em {DATA_DIR}")
@@ -325,47 +303,51 @@ def run():
 
         zips = {z.stem.upper(): z for z in snap_dir.glob("*.zip")}
 
-        # ── tabelas de domínio ────────────────────────────────────────────
+        # ── tabelas de domínio (pequenas, sem chunking especial) ──────────
         domain_map = {
-            "CNAES":         ("cnaes",         DOMAIN_SCHEMAS["cnaes"]),
-            "NATUREZAS":     ("naturezas",      DOMAIN_SCHEMAS["naturezas"]),
-            "QUALIFICACOES": ("qualificacoes",  DOMAIN_SCHEMAS["qualificacoes"]),
-            "MOTIVOS":       ("motivos",        DOMAIN_SCHEMAS["motivos"]),
-            "MUNICIPIOS":    ("municipios_rf",  DOMAIN_SCHEMAS["municipios"]),
-            "PAISES":        ("paises",         DOMAIN_SCHEMAS["paises"]),
+            "CNAES":         ("cnaes",        DOMAIN_SCHEMAS["cnaes"]),
+            "NATUREZAS":     ("naturezas",     DOMAIN_SCHEMAS["naturezas"]),
+            "QUALIFICACOES": ("qualificacoes", DOMAIN_SCHEMAS["qualificacoes"]),
+            "MOTIVOS":       ("motivos",       DOMAIN_SCHEMAS["motivos"]),
+            "MUNICIPIOS":    ("municipios_rf", DOMAIN_SCHEMAS["municipios_rf"]),
+            "PAISES":        ("paises",        DOMAIN_SCHEMAS["paises"]),
         }
         for zip_stem, (out_name, cols) in domain_map.items():
             zip_path = zips.get(zip_stem)
             if zip_path:
                 log.info(f"    {zip_stem} → {out_name}.csv")
-                _process_domain(out_name, cols, zip_path, out_dir, snapshot)
+                _process_domain(out_name, cols, zip_path, out_dir, snapshot, chunk_size)
             else:
                 log.warning(f"    ZIP não encontrado: {zip_stem}.zip")
 
-        # ── arquivos numerados ────────────────────────────────────────────
+        # ── arquivos numerados (grandes — processados chunk a chunk) ──────
         def _numbered(prefix: str) -> list[Path]:
             return sorted(snap_dir.glob(f"{prefix}*.zip"), key=lambda p: p.stem)
 
         emp_zips = _numbered("Empresas")
         if emp_zips:
-            log.info(f"    Empresas ({len(emp_zips)} ZIPs)")
-            _process_empresas(emp_zips, out_dir, snapshot)
+            log.info(f"    Empresas ({len(emp_zips)} ZIPs, chunk={chunk_size:,})")
+            _process_main("empresas", EMPRESAS_COLS, emp_zips, out_dir,
+                          snapshot, _transform_empresas, chunk_size)
 
         soc_zips = _numbered("Socios")
         if soc_zips:
-            log.info(f"    Socios ({len(soc_zips)} ZIPs)")
-            _process_socios(soc_zips, out_dir, snapshot)
+            log.info(f"    Socios ({len(soc_zips)} ZIPs, chunk={chunk_size:,})")
+            _process_main("socios", SOCIOS_COLS, soc_zips, out_dir,
+                          snapshot, _transform_socios, chunk_size)
 
         est_zips = _numbered("Estabelecimentos")
         if est_zips:
-            log.info(f"    Estabelecimentos ({len(est_zips)} ZIPs)")
-            _process_estabelecimentos(est_zips, out_dir, snapshot)
+            log.info(f"    Estabelecimentos ({len(est_zips)} ZIPs, chunk={chunk_size:,})")
+            _process_main("estabelecimentos", ESTABELECIMENTOS_COLS, est_zips, out_dir,
+                          snapshot, _transform_estabelecimentos, chunk_size)
 
         sim_zip = zips.get("SIMPLES")
         if sim_zip:
-            log.info("    Simples")
-            _process_simples(sim_zip, out_dir, snapshot)
+            log.info(f"    Simples (chunk={chunk_size:,})")
+            _process_main("simples", SIMPLES_COLS, [sim_zip], out_dir,
+                          snapshot, _transform_simples, chunk_size)
 
-        log.info(f"  [snapshot {snapshot}] CSVs em {out_dir}")
+        log.info(f"  [snapshot {snapshot}] CSVs salvos em {out_dir}")
 
     log.info("[cnpj] Extração concluída")
