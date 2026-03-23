@@ -3,17 +3,21 @@
 etl/main.py  –  Orquestrador ETL via CLI
 
 Uso:
-  python main.py download              # baixa tudo
-  python main.py download ibge         # baixa só ibge
+  python main.py download              # baixa / extrai tudo
+  python main.py download ibge         # só ibge
+  python main.py download cnpj         # só cnpj (extrai ZIPs locais)
   python main.py pipeline              # executa todos os pipelines
-  python main.py pipeline ibge         # executa só o pipeline ibge
+  python main.py pipeline ibge         # só ibge
+  python main.py pipeline cnpj         # só cnpj (snapshot mais recente)
+  python main.py pipeline cnpj --history  # todos os snapshots
   python main.py run                   # download + pipeline (tudo)
   python main.py run ibge              # download + pipeline (só ibge)
+  python main.py run cnpj              # download + pipeline (só cnpj)
 
 Variáveis de ambiente (ou .env):
   NEO4J_URI       bolt://localhost:7687
   NEO4J_USER      neo4j
-  NEO4J_PASSWORD  changeme
+  NEO4J_PASSWORD  senha123
 """
 
 import importlib.util
@@ -50,19 +54,18 @@ _load_dotenv()
 
 NEO4J_URI      = os.environ.get("NEO4J_URI",      "bolt://neo4j:7687")
 NEO4J_USER     = os.environ.get("NEO4J_USER",     "neo4j")
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "senha123")
 
 
-# ── registry: adicione novos módulos aqui ─────────────────────────────────────
-#  chave = nome usado na CLI, valor = caminho relativo ao ETL_DIR
+# ── registry ──────────────────────────────────────────────────────────────────
 DOWNLOADS = {
     "ibge": "download/1-ibge.py",
-    # "outro": "download/2-outro.py",
+    "cnpj": "download/2-cnpj.py",
 }
 
 PIPELINES = {
     "ibge": "pipeline/1-ibge.py",
-    # "outro": "pipeline/2-outro.py",
+    "cnpj": "pipeline/2-cnpj.py",
 }
 
 
@@ -76,7 +79,7 @@ def _load(rel_path: str):
 
 
 # ── execução ──────────────────────────────────────────────────────────────────
-def do_download(names: list[str]):
+def do_download(names: list[str], flags: list[str]):
     for name in names:
         if name not in DOWNLOADS:
             log.error(f"Download desconhecido: '{name}'. Disponíveis: {list(DOWNLOADS)}")
@@ -85,17 +88,25 @@ def do_download(names: list[str]):
         _load(DOWNLOADS[name]).run()
 
 
-def do_pipeline(names: list[str]):
+def do_pipeline(names: list[str], flags: list[str]):
+    history = "--history" in flags
     for name in names:
         if name not in PIPELINES:
             log.error(f"Pipeline desconhecido: '{name}'. Disponíveis: {list(PIPELINES)}")
             sys.exit(1)
         log.info(f"=== PIPELINE: {name} ===")
-        _load(PIPELINES[name]).run(
+        mod = _load(PIPELINES[name])
+        import inspect
+        sig = inspect.signature(mod.run)
+        kwargs = dict(
             neo4j_uri=NEO4J_URI,
             neo4j_user=NEO4J_USER,
             neo4j_password=NEO4J_PASSWORD,
         )
+        # passa --history só para pipelines que aceitam o parâmetro
+        if "history" in sig.parameters:
+            kwargs["history"] = history
+        mod.run(**kwargs)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -107,21 +118,25 @@ def main():
         sys.exit(0)
 
     command = args[0]
-    targets = args[1:] if len(args) > 1 else None   # None = todos
+    rest    = args[1:]
+
+    # separa nomes de targets dos flags (começam com --)
+    targets = [a for a in rest if not a.startswith("--")] or None
+    flags   = [a for a in rest if a.startswith("--")]
 
     if command == "download":
         names = targets or list(DOWNLOADS)
-        do_download(names)
+        do_download(names, flags)
 
     elif command == "pipeline":
         names = targets or list(PIPELINES)
-        do_pipeline(names)
+        do_pipeline(names, flags)
 
     elif command == "run":
         names = targets or list(DOWNLOADS)
-        do_download(names)
+        do_download(names, flags)
         names = targets or list(PIPELINES)
-        do_pipeline(names)
+        do_pipeline(names, flags)
 
     else:
         log.error(f"Comando inválido: '{command}'. Use: download | pipeline | run")
