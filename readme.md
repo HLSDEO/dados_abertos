@@ -18,3 +18,7 @@ docker compose run --rm etl download cnpj              # só extrai ZIPs
 
 # 4. acessa o browser do Neo4j
 #    http://localhost:7474   (usuário: neo4j / senha: changeme)
+
+
+# 3000. Limpar o cache do ETL
+docker compose build --no-cache etl
