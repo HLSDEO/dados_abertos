@@ -430,6 +430,36 @@ def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
     log.info(f"    [socios] ✓ PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,}")
 
 
+# ── Espera Neo4j ficar pronto ─────────────────────────────────────────────────
+
+def _wait_for_neo4j(uri: str, user: str, password: str,
+                    retries: int = 20, delay: float = 5.0) -> "Driver":
+    """
+    Cria o driver e aguarda o Bolt estar aceitando conexões.
+    O healthcheck do Docker verifica o processo, mas a porta 7687 demora
+    alguns segundos a mais para ficar disponível.
+    """
+    import time
+    from neo4j.exceptions import ServiceUnavailable
+
+    driver = GraphDatabase.driver(
+        uri,
+        auth=(user, password),
+        max_connection_pool_size=WORKERS + 2,
+    )
+    for attempt in range(1, retries + 1):
+        try:
+            with driver.session() as session:
+                session.run("RETURN 1")
+            log.info(f"  Neo4j pronto (tentativa {attempt})")
+            return driver
+        except ServiceUnavailable:
+            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
+            time.sleep(delay)
+
+    raise RuntimeError(f"Neo4j não ficou disponível após {retries} tentativas")
+
+
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = False):
@@ -448,11 +478,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
     else:
         log.info(f"  Histórico: {len(snapshots)} snapshots")
 
-    driver = GraphDatabase.driver(
-        neo4j_uri,
-        auth=(neo4j_user, neo4j_password),
-        max_connection_pool_size=WORKERS + 2,   # pool suficiente para as threads
-    )
+    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     # ── constraints + índices (antes da carga) ────────────────────────────────
     with driver.session() as session:
