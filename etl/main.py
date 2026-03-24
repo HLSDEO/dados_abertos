@@ -75,6 +75,7 @@ DOWNLOADS = {
     "ibge": "download/1-ibge.py",
     "cnpj": "download/2-cnpj.py",
     "tse":  "download/3-tse.py",
+    "tesouro_transparente": "download/4-tesouro_transparente.py",
     "cpgf": "download/10-cpgf.py",
 }
 
