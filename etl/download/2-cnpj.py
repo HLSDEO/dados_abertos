@@ -200,7 +200,11 @@ class _CsvWriter:
 
 def _process_domain(out_name: str, columns: list[str], zip_path: Path,
                     out_dir: Path, snapshot: str, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> None:
-    writer = _CsvWriter(out_dir / f"{out_name}.csv")
+    out_path = out_dir / f"{out_name}.csv"
+    if out_path.exists():
+        log.info(f"    → {out_name}.csv já existe ({out_path.stat().st_size/1e6:.1f} MB) — pulando")
+        return
+    writer = _CsvWriter(out_path)
     fonte  = _fonte_cols(FONTE["fonte_url"], snapshot)
     try:
         for chunk in _iter_zip_chunks(zip_path, columns, chunk_size):
@@ -272,6 +276,11 @@ def _process_main(
     """
     if workers < 1:
         workers = 1
+
+    out_path = out_dir / f"{out_name}.csv"
+    if out_path.exists():
+        log.info(f"    → {out_name}.csv já existe ({out_path.stat().st_size/1e6:.1f} MB) — pulando")
+        return
 
     tmp_root = Path(tempfile.mkdtemp())
 
