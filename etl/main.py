@@ -70,7 +70,8 @@ NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
 DOWNLOADS = {
     "ibge": "download/1-ibge.py",
     "cnpj": "download/2-cnpj.py",
-    "cpgf": "download/4-cpgf.py",
+    # ----- testar
+    "cpgf": "download/10-cpgf.py",
 }
 
 PIPELINES = {

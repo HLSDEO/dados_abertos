@@ -10,8 +10,11 @@ services:
       - "7687:7687"   # Bolt     → bolt://localhost:7687
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme}"
-      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_PLUGINS: '["apoc", "graph-data-science"]'
       TZ: America/Sao_Paulo
+      NEO4J_server_memory_heap_initial__size: "2g"
+      NEO4J_server_memory_heap_max__size:     "4g"
+      NEO4J_server_memory_pagecache_size:     "4g"
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
@@ -41,8 +44,10 @@ services:
       NEO4J_USER:     "${NEO4J_USER:-neo4j}"
       NEO4J_PASSWORD: "${NEO4J_PASSWORD:-changeme}"
       TZ: America/Sao_Paulo
-      CHUNK_SIZE:     "${CHUNK_SIZE:-100000}"
+      CHUNK_SIZE:     "${CHUNK_SIZE:-150000}"
       WORKERS:        "${WORKERS:-2}"
+      NEO4J_BATCH:       "${NEO4J_BATCH:-2000}"
+      PIPELINE_WORKERS:  "${PIPELINE_WORKERS:-2}"
     volumes:
       - ./data:/data             # monta data/ do host em /data no container
     # CMD padrão = "run" (download + pipeline tudo)
