@@ -22,19 +22,20 @@
 ```
 
 #### BASES
-* ibge | Dados do IBGE relacionados a munícipios, estados.
-* cnpj | Dados da receita federal relacionados a empresas, sócios e estabelecimentos.
-* tse | Dados do TSE relacionados ao candidatos a eleições e doadores.
+| Nome | Descrição |
+| :--- | :---: |
+| ibge | Dados do IBGE relacionados a munícipios, estados. |
+| cnpj | Dados da receita federal relacionados a empresas, sócios e estabelecimentos. |
+| tse | Dados do TSE relacionados ao candidatos a eleições e doadores. |
 
 ## 4. acessa o browser do Neo4j
 * http://localhost:7474   (usuário: neo4j / senha: changeme)
 
 ## Arquitetura
-
-| Camada            | Tecnologia                    |
-|-------------------|                               |
-| Banco de Grafo    | Neo4j 5 Community             |
-| Backend           | FastAPI (Python 3.12+, async) |
-| Frontend          | *                             |
-| ETL               | Python (pandas)               |
-| Infra             | Docker Compose                |
+| Camada | Tecnologia |
+| :--- | :---: |
+| Banco de Grafo | Neo4j 5 Community |
+| Backend | FastAPI (Python 3.12+, async) |
+| Frontend | * |
+| ETL | Python (pandas) |
+| Infra | Docker Compose |
