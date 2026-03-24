@@ -135,18 +135,23 @@ MERGE (u)-[:LOCALIZADO_EM]->(m)
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _run_batches(session, query: str, rows: list[dict],
-                 retries: int = 5) -> None:
+                 retries: int = 5, batch_override: int | None = None) -> None:
     import time
     from neo4j.exceptions import TransientError
-    for i in range(0, len(rows), BATCH):
-        batch = rows[i : i + BATCH]
+    size = batch_override or BATCH
+    for i in range(0, len(rows), size):
+        batch = rows[i : i + size]
         for attempt in range(1, retries + 1):
             try:
-                session.run(query, rows=batch)
+                with session.begin_transaction() as tx:
+                    tx.run(query, rows=batch)
+                    tx.commit()
                 break
             except TransientError as exc:
                 if "DeadlockDetected" in str(exc) and attempt < retries:
-                    time.sleep(attempt * 0.5)
+                    wait = attempt * 0.5
+                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait}s")
+                    time.sleep(wait)
                 else:
                     raise
 
@@ -312,8 +317,10 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     rows_municipais = [r for r in rows if r.get("nome_municipio")]
     if rows_municipais:
         log.info(f"  [5/5] Vinculando {len(rows_municipais):,} UASGs → :Municipio...")
+        # batch menor para evitar deadlock — muitas UASGs apontam para o mesmo :Municipio
         with driver.session() as session:
-            _run_batches(session, Q_UASG_MUNICIPIO, rows_municipais)
+            _run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
+                         batch_override=100)
     else:
         log.info("  [5/5] Nenhuma UASG municipal para vincular")
 
