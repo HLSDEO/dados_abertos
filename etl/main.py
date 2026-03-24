@@ -9,22 +9,27 @@ Uso:
   python main.py download cnpj --workers 4                 # 4 ZIPs em paralelo
   python main.py download cnpj --chunk 50000 --workers 4   # ambos
   python main.py pipeline cnpj --history                   # todos os snapshots
-  python main.py run cnpj --chunk 75000 --workers 4
+  python main.py run cnpj --chunk 75000 --workers 4        # download + pipeline
+  python main.py run cnpj --full                           # download + pipeline + analytics
+  python main.py analytics                                 # só analytics (tudo)
+  python main.py analytics gds                             # só o GDS
 
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
-  --workers N   ZIPs processados em paralelo (default: 1 = sequencial)
+  --workers N   ZIPs processados em paralelo (default: 2)
   --history     Processa todos os snapshots (só pipelines que suportam)
+  --full        No comando 'run': executa analytics após pipeline
 
 Variáveis de ambiente (ou .env):
   NEO4J_URI       bolt://localhost:7687
   NEO4J_USER      neo4j
   NEO4J_PASSWORD  changeme
   CHUNK_SIZE      50000
-  WORKERS         1
+  WORKERS         2
 """
 
 import importlib.util
+import inspect
 import logging
 import os
 import sys
@@ -72,6 +77,10 @@ PIPELINES = {
     "cnpj": "pipeline/2-cnpj.py",
 }
 
+ANALYTICS = {
+    "gds": "analytics/1-gds.py",
+}
+
 
 # ── loader dinâmico ───────────────────────────────────────────────────────────
 def _load(rel_path: str):
@@ -89,12 +98,9 @@ DEFAULT_WORKERS    = int(os.environ.get("WORKERS",     "2"))
 # ── parse de flags ────────────────────────────────────────────────────────────
 
 def _parse_flags(flags: list[str]) -> dict:
-    """
-    Converte lista de flags em dict de opções.
-    Suporta:  --chunk 100000   --workers 4   --history
-    """
     opts = {
         "history":    False,
+        "full":       False,
         "chunk_size": DEFAULT_CHUNK_SIZE,
         "workers":    DEFAULT_WORKERS,
     }
@@ -103,6 +109,8 @@ def _parse_flags(flags: list[str]) -> dict:
         f = flags[i]
         if f == "--history":
             opts["history"] = True
+        elif f == "--full":
+            opts["full"] = True
         elif f in ("--chunk", "--workers"):
             key = "chunk_size" if f == "--chunk" else "workers"
             if i + 1 < len(flags):
@@ -122,6 +130,7 @@ def _parse_flags(flags: list[str]) -> dict:
 
 
 # ── execução ──────────────────────────────────────────────────────────────────
+
 def do_download(names: list[str], opts: dict):
     for name in names:
         if name not in DOWNLOADS:
@@ -129,7 +138,6 @@ def do_download(names: list[str], opts: dict):
             sys.exit(1)
         log.info(f"=== DOWNLOAD: {name} ===")
         mod = _load(DOWNLOADS[name])
-        import inspect
         sig = inspect.signature(mod.run)
         kwargs = {}
         if "chunk_size" in sig.parameters:
@@ -148,7 +156,6 @@ def do_pipeline(names: list[str], opts: dict):
             sys.exit(1)
         log.info(f"=== PIPELINE: {name} ===")
         mod = _load(PIPELINES[name])
-        import inspect
         sig = inspect.signature(mod.run)
         kwargs = dict(
             neo4j_uri=NEO4J_URI,
@@ -162,6 +169,22 @@ def do_pipeline(names: list[str], opts: dict):
         mod.run(**kwargs)
 
 
+def do_analytics(names: list[str], opts: dict):
+    for name in names:
+        if name not in ANALYTICS:
+            log.error(f"Analytics desconhecido: '{name}'. Disponíveis: {list(ANALYTICS)}")
+            sys.exit(1)
+        log.info(f"=== ANALYTICS: {name} ===")
+        mod = _load(ANALYTICS[name])
+        sig = inspect.signature(mod.run)
+        kwargs = dict(
+            neo4j_uri=NEO4J_URI,
+            neo4j_user=NEO4J_USER,
+            neo4j_password=NEO4J_PASSWORD,
+        )
+        mod.run(**{k: v for k, v in kwargs.items() if k in sig.parameters})
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def main():
     args = sys.argv[1:]
@@ -173,10 +196,8 @@ def main():
     command = args[0]
     rest    = args[1:]
 
-    # separa targets (sem --) dos flags (com --)
     targets = [a for a in rest if not a.startswith("--")] or None
-    flags   = [a for a in rest if a.startswith("--")]
-    # inclui valores após flags com valor (ex: --chunk 100000)
+
     raw_flags = []
     i = 0
     while i < len(rest):
@@ -197,14 +218,21 @@ def main():
         names = targets or list(PIPELINES)
         do_pipeline(names, opts)
 
+    elif command == "analytics":
+        names = targets or list(ANALYTICS)
+        do_analytics(names, opts)
+
     elif command == "run":
         names = targets or list(DOWNLOADS)
         do_download(names, opts)
         names = targets or list(PIPELINES)
         do_pipeline(names, opts)
+        if opts["full"]:
+            log.info("=== [--full] executando analytics após pipeline ===")
+            do_analytics(list(ANALYTICS), opts)
 
     else:
-        log.error(f"Comando inválido: '{command}'. Use: download | pipeline | run")
+        log.error(f"Comando inválido: '{command}'. Use: download | pipeline | analytics | run")
         sys.exit(1)
 
 
