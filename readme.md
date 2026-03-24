@@ -1,24 +1,40 @@
-# 1. sobe o Neo4j (fica em background)
-docker compose up -d
+# DADOS ABERTOS -DABERTO
+**Infraestrutura open-source em grafo que cruza bases publicas brasileiras para gerar inteligencia acionavel para melhoria civica.**
 
-# 2. executa o ETL completo (download + pipeline)
-docker compose run --rm etl
+## Comandos
+### 1. sobe o Neo4j (fica em background)
+```bash
+    docker compose up -d
+```
+### 2. executa o ETL
+#### 2.1. completo (download + pipeline)
+```bash
+    docker compose run --rm etl
+```
+#### 2.2. Ou bases específicas:
+```bash
+    docker compose run --rm etl download
+    docker compose run --rm etl pipeline
+```
+#### 100. Limpar o cache do ETL:
+```bash
+    docker compose build --no-cache etl
+```
 
-# 3. ou comandos específicos:
-docker compose run --rm etl download
-docker compose run --rm etl pipeline
+#### BASES
+* ibge | Dados do IBGE relacionados a munícipios, estados.
+* cnpj | Dados da receita federal relacionados a empresas, sócios e estabelecimentos.
+* tse | Dados do TSE relacionados ao candidatos a eleições e doadores.
 
-docker compose run --rm etl download ibge
-docker compose run --rm etl pipeline ibge
-docker compose run --rm etl run ibge
+## 4. acessa o browser do Neo4j
+* http://localhost:7474   (usuário: neo4j / senha: changeme)
 
-docker compose run --rm etl run cnpj                   # extrai ZIPs + carrega
-docker compose run --rm etl pipeline cnpj --history    # todos os snapshots
-docker compose run --rm etl download cnpj              # só extrai ZIPs
+## Arquitetura
 
-# 4. acessa o browser do Neo4j
-#    http://localhost:7474   (usuário: neo4j / senha: changeme)
-
-
-# 3000. Limpar o cache do ETL
-docker compose build --no-cache etl
+| Camada            | Tecnologia                    |
+|-------------------|                               |
+| Banco de Grafo    | Neo4j 5 Community             |
+| Backend           | FastAPI (Python 3.12+, async) |
+| Frontend          | *                             |
+| ETL               | Python (pandas)               |
+| Infra             | Docker Compose                |
