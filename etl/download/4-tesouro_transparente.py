@@ -4,10 +4,10 @@ Fonte: https://www.tesourotransparente.gov.br/ckan/
 
 Baixa:
   1. Lista de órgãos do SIAFI
-     → data/siafi/orgaos.csv
+     → data/tesouro_transparente/orgaos.csv
 
   2. Emendas parlamentares (individuais e de bancada)
-     → data/siafi/emendas.csv
+     → data/tesouro_transparente/emendas.csv
 
 Ambos os arquivos são CSV direto (sem ZIP).
 Arquivos já existentes são pulados (idempotente).
@@ -27,11 +27,11 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "siafi"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tesouro_transparente"
 
 FONTE = {
     "fonte_nome":      "Tesouro Nacional — Tesouro Transparente",
-    "fonte_descricao": "SIAFI — Sistema Integrado de Administração Financeira do Governo Federal",
+    "fonte_descricao": "Tesouro Transparente - STN",
     "fonte_url":       "https://www.tesourotransparente.gov.br",
     "fonte_licenca":   "Dados Abertos — https://creativecommons.org/licenses/by/4.0/",
 }
@@ -136,12 +136,14 @@ def _process(key: str, cfg: dict) -> None:
     if not content:
         return
 
-    # detecta encoding real — tenta utf-8-sig, fallback latin-1
-    for enc in (cfg.get("encoding", "utf-8-sig"), "latin-1", "utf-8"):
+    # detecta encoding — UTF-16 LE/BE (BOM ÿþ ou þÿ), UTF-8-BOM, latin-1
+    for enc in ("utf-16", "utf-8-sig", cfg.get("encoding", "utf-8-sig"), "latin-1", "utf-8"):
         try:
-            text = content.decode(enc)
+            decoded = content.decode(enc)
+            # UTF-16 decodificado ainda pode ter BOM residual — remove
+            text = decoded.lstrip("\ufeff")
             break
-        except UnicodeDecodeError:
+        except (UnicodeDecodeError, UnicodeError):
             continue
     else:
         log.error(f"    Não foi possível decodificar {key}.csv")
@@ -154,7 +156,14 @@ def _process(key: str, cfg: dict) -> None:
         log.warning(f"    {key}.csv sem cabeçalho detectado")
         return
 
-    log.info(f"    Colunas: {reader.fieldnames}")
+    # UTF-16 pode gerar fieldnames com None ou colunas vazias — filtra
+    fieldnames_clean = [f for f in reader.fieldnames if f is not None and f.strip()]
+    if not fieldnames_clean:
+        log.warning(f"    {key}.csv cabeçalho inválido: {reader.fieldnames}")
+        return
+
+    log.info(f"    Encoding detectado: {enc}  |  {len(fieldnames_clean)} colunas")
+    log.info(f"    Colunas: {fieldnames_clean}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     rows_written = 0
@@ -162,9 +171,11 @@ def _process(key: str, cfg: dict) -> None:
     with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = None
         for row in reader:
+            # remove chaves None geradas por colunas extras do CSV
+            row = {k: v for k, v in row.items() if k is not None}
             # normaliza campo de valor se existir
-            for col in row:
-                if "valor" in col.lower() or "Valor" in col:
+            for col in list(row.keys()):
+                if col and ("valor" in col.lower()):
                     row[col] = _normalize_valor(row[col])
 
             _add_fonte(row, url)
