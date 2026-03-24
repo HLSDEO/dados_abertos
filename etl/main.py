@@ -8,6 +8,9 @@ Uso:
   python main.py download cnpj --chunk 100000              # chunk customizado
   python main.py download cnpj --workers 4                 # 4 ZIPs em paralelo
   python main.py download cnpj --chunk 50000 --workers 4   # ambos
+  python main.py download tse                               # todas as eleições TSE
+  python main.py download tse --eleicao 2024                # só 2024
+  python main.py download tse --eleicao 2024 --eleicao 2022 # 2024 e 2022
   python main.py pipeline cnpj --history                   # todos os snapshots
   python main.py run cnpj --chunk 75000 --workers 4        # download + pipeline
   python main.py run cnpj --full                           # download + pipeline + analytics
@@ -19,6 +22,7 @@ Flags:
   --workers N   ZIPs processados em paralelo (default: 2)
   --history     Processa todos os snapshots (só pipelines que suportam)
   --full        No comando 'run': executa analytics após pipeline
+  --eleicao ANO Ano de eleição — repetível (ex: --eleicao 2024 --eleicao 2022)
 
 Variáveis de ambiente (ou .env):
   NEO4J_URI       bolt://localhost:7687
@@ -70,13 +74,14 @@ NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
 DOWNLOADS = {
     "ibge": "download/1-ibge.py",
     "cnpj": "download/2-cnpj.py",
-    # ----- testar
+    "tse":  "download/3-tse.py",
     "cpgf": "download/10-cpgf.py",
 }
 
 PIPELINES = {
     "ibge": "pipeline/1-ibge.py",
     "cnpj": "pipeline/2-cnpj.py",
+    "tse":  "pipeline/3-tse.py",
 }
 
 ANALYTICS = {
@@ -105,6 +110,7 @@ def _parse_flags(flags: list[str]) -> dict:
         "full":       False,
         "chunk_size": DEFAULT_CHUNK_SIZE,
         "workers":    DEFAULT_WORKERS,
+        "eleicoes":   [],          # lista de anos — vazia = todos
     }
     i = 0
     while i < len(flags):
@@ -113,17 +119,22 @@ def _parse_flags(flags: list[str]) -> dict:
             opts["history"] = True
         elif f == "--full":
             opts["full"] = True
-        elif f in ("--chunk", "--workers"):
-            key = "chunk_size" if f == "--chunk" else "workers"
+        elif f in ("--chunk", "--workers", "--eleicao"):
             if i + 1 < len(flags):
                 try:
-                    opts[key] = int(flags[i + 1])
-                    i += 1
+                    val = int(flags[i + 1])
+                    i  += 1
                 except ValueError:
                     log.error(f"{f} requer um número inteiro, recebido: '{flags[i+1]}'")
                     sys.exit(1)
+                if f == "--chunk":
+                    opts["chunk_size"] = val
+                elif f == "--workers":
+                    opts["workers"] = val
+                else:  # --eleicao
+                    opts["eleicoes"].append(val)
             else:
-                log.error(f"{f} requer um valor, ex: {f} 4")
+                log.error(f"{f} requer um valor, ex: {f} 2024")
                 sys.exit(1)
         else:
             log.warning(f"Flag desconhecida ignorada: '{f}'")
@@ -146,7 +157,12 @@ def do_download(names: list[str], opts: dict):
             kwargs["chunk_size"] = opts["chunk_size"]
         if "workers" in sig.parameters:
             kwargs["workers"] = opts["workers"]
-        if kwargs:
+        if "eleicoes" in sig.parameters:
+            # None = todos; lista vazia também vira None (sem filtro)
+            kwargs["eleicoes"] = opts["eleicoes"] or None
+            if kwargs["eleicoes"]:
+                log.info(f"  eleicoes={kwargs['eleicoes']}")
+        if any(k in kwargs for k in ("chunk_size", "workers")):
             log.info(f"  chunk_size={opts['chunk_size']:,}  workers={opts['workers']}")
         mod.run(**kwargs)
 
@@ -168,6 +184,10 @@ def do_pipeline(names: list[str], opts: dict):
             kwargs["history"] = opts["history"]
         if "chunk_size" in sig.parameters:
             kwargs["chunk_size"] = opts["chunk_size"]
+        if "eleicoes" in sig.parameters:
+            kwargs["eleicoes"] = opts["eleicoes"] or None
+            if kwargs["eleicoes"]:
+                log.info(f"  eleicoes={kwargs['eleicoes']}")
         mod.run(**kwargs)
 
 
@@ -205,7 +225,8 @@ def main():
     while i < len(rest):
         if rest[i].startswith("--"):
             raw_flags.append(rest[i])
-            if rest[i] in ("--chunk", "--workers") and i + 1 < len(rest) and not rest[i+1].startswith("--"):
+            if rest[i] in ("--chunk", "--workers", "--eleicao") \
+                    and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
         i += 1
