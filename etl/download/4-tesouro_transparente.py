@@ -48,7 +48,9 @@ ARQUIVOS = {
         ),
         "descricao": "Lista de órgãos do SIAFI",
         "encoding":  "utf-8-sig",   # arquivo vem com BOM
+        "encoding":  "utf-8-sig",
         "sep":       ",",
+        "skip_rows": 1,   # primeira linha é título "Lista de Órgãos SIAFI", não cabeçalho
     },
     "emendas": {
         "url": (
@@ -59,7 +61,7 @@ ARQUIVOS = {
         ),
         "descricao": "Emendas parlamentares (individuais e de bancada)",
         "encoding":  "utf-8-sig",
-        "sep":       "\t",          # separador tab no arquivo original
+        "sep":       ";",   # separador real é ponto-e-vírgula
     },
 }
 
@@ -136,21 +138,45 @@ def _process(key: str, cfg: dict) -> None:
     if not content:
         return
 
-    # detecta encoding — UTF-16 LE/BE (BOM ÿþ ou þÿ), UTF-8-BOM, latin-1
-    for enc in ("utf-16", "utf-8-sig", cfg.get("encoding", "utf-8-sig"), "latin-1", "utf-8"):
+    # detecta encoding verificando BOM nos primeiros bytes
+    # UTF-16 LE: FF FE  |  UTF-16 BE: FE FF  |  UTF-8 BOM: EF BB BF
+    if content[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        encs = ("utf-16", "utf-8-sig", "latin-1")
+    elif content[:3] == b"\xef\xbb\xbf":
+        encs = ("utf-8-sig", "latin-1", "utf-8")
+    else:
+        encs = ("utf-8-sig", cfg.get("encoding", "utf-8-sig"), "latin-1", "utf-8")
+
+    text = None
+    enc  = None
+    for try_enc in encs:
         try:
-            decoded = content.decode(enc)
-            # UTF-16 decodificado ainda pode ter BOM residual — remove
-            text = decoded.lstrip("\ufeff")
+            text = content.decode(try_enc).lstrip("\ufeff")
+            enc  = try_enc
             break
         except (UnicodeDecodeError, UnicodeError):
             continue
-    else:
+
+    if text is None:
         log.error(f"    Não foi possível decodificar {key}.csv")
         return
 
-    sep    = cfg.get("sep", ",")
-    reader = csv.DictReader(text.splitlines(), delimiter=sep)
+    sep       = cfg.get("sep", ",")
+    skip_rows = cfg.get("skip_rows", 0)
+
+    lines = text.splitlines()
+
+    # pula linhas de título antes do cabeçalho real (ex: órgãos tem "Lista de Órgãos SIAFI")
+    if skip_rows:
+        log.info(f"    Pulando {skip_rows} linha(s) de título")
+        lines = lines[skip_rows:]
+
+    # auto-detecta separador pela primeira linha se não especificado claramente
+    if lines and sep not in lines[0] and ";" in lines[0]:
+        log.warning(f"    Separador '{sep}' não encontrado — usando ';'")
+        sep = ";"
+
+    reader = csv.DictReader(lines, delimiter=sep)
 
     if not reader.fieldnames:
         log.warning(f"    {key}.csv sem cabeçalho detectado")
@@ -162,7 +188,7 @@ def _process(key: str, cfg: dict) -> None:
         log.warning(f"    {key}.csv cabeçalho inválido: {reader.fieldnames}")
         return
 
-    log.info(f"    Encoding detectado: {enc}  |  {len(fieldnames_clean)} colunas")
+    log.info(f"    Encoding: {enc}  sep: '{sep}'  colunas: {len(fieldnames_clean)}")
     log.info(f"    Colunas: {fieldnames_clean}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
