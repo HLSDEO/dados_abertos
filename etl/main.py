@@ -83,6 +83,7 @@ PIPELINES = {
     "ibge": "pipeline/1-ibge.py",
     "cnpj": "pipeline/2-cnpj.py",
     "tse":  "pipeline/3-tse.py",
+    "siafi": "pipeline/4-siafi.py",
 }
 
 ANALYTICS = {

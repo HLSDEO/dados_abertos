@@ -1,16 +1,12 @@
 """
-Download 4 - Tesouro Transparente / Tesouro Transparente
+Download 4 - Tesouro Transparente
 Fonte: https://www.tesourotransparente.gov.br/ckan/
 
 Baixa:
-  1. Lista de órgãos do SIAFI
-     → data/tesouro_transparente/orgaos.csv
+  Emendas parlamentares (individuais e de bancada)
+  → data/tesouro_transparente/emendas.csv
 
-  2. Emendas parlamentares (individuais e de bancada)
-     → data/tesouro_transparente/emendas.csv
-
-Ambos os arquivos são CSV direto (sem ZIP).
-Arquivos já existentes são pulados (idempotente).
+Arquivo já existente é pulado (idempotente).
 
 Uso:
   python main.py download tesouro_transparente
@@ -38,20 +34,6 @@ FONTE = {
 
 # ── Fontes de dados ───────────────────────────────────────────────────────────
 ARQUIVOS = {
-    "orgaos": {
-        "url": (
-            "https://www.tesourotransparente.gov.br/ckan/dataset/"
-            "8b1dc734-7b54-471c-bcea-00f2fdf4bbe4/resource/"
-            "6d4c41d1-ebc5-4ba0-970a-a0dfea9de82d/download/"
-            "lista-de-orgaos-do-siafilistadeorgaossiafilistadeorgaossiafi"
-            "2025-01-0918.27.26.000.csv"
-        ),
-        "descricao": "Lista de órgãos do SIAFI",
-        "encoding":  "utf-8-sig",   # arquivo vem com BOM
-        "encoding":  "utf-8-sig",
-        "sep":       ",",
-        "skip_rows": 1,   # primeira linha é título "Lista de Órgãos SIAFI", não cabeçalho
-    },
     "emendas": {
         "url": (
             "https://www.tesourotransparente.gov.br/ckan/dataset/"
@@ -61,7 +43,7 @@ ARQUIVOS = {
         ),
         "descricao": "Emendas parlamentares (individuais e de bancada)",
         "encoding":  "utf-8-sig",
-        "sep":       ";",   # separador real é ponto-e-vírgula
+        "sep":       ";",
     },
 }
 
@@ -164,17 +146,36 @@ def _process(key: str, cfg: dict) -> None:
     sep       = cfg.get("sep", ",")
     skip_rows = cfg.get("skip_rows", 0)
 
-    lines = text.splitlines()
+    lines = [l for l in text.splitlines() if l.strip()]  # remove linhas vazias
 
-    # pula linhas de título antes do cabeçalho real (ex: órgãos tem "Lista de Órgãos SIAFI")
-    if skip_rows:
-        log.info(f"    Pulando {skip_rows} linha(s) de título")
-        lines = lines[skip_rows:]
+    # loga primeiras linhas para debug
+    log.info(f"    Primeiras linhas do arquivo:")
+    for i, l in enumerate(lines[:4]):
+        log.info(f"      [{i}]: {repr(l[:120])}")
 
-    # auto-detecta separador pela primeira linha se não especificado claramente
-    if lines and sep not in lines[0] and ";" in lines[0]:
-        log.warning(f"    Separador '{sep}' não encontrado — usando ';'")
-        sep = ";"
+    # se skip_rows configurado, tenta pular linhas de título
+    # mas verifica se a linha resultante realmente parece um cabeçalho (contém o separador)
+    if skip_rows and len(lines) > skip_rows:
+        candidate = lines[skip_rows]
+        if sep in candidate:
+            log.info(f"    Pulando {skip_rows} linha(s) de título")
+            lines = lines[skip_rows:]
+        else:
+            # auto-detecta: procura a primeira linha que contenha o separador
+            for idx, line in enumerate(lines):
+                if sep in line:
+                    if idx > 0:
+                        log.info(f"    Auto-skip: pulando {idx} linha(s) de título")
+                        lines = lines[idx:]
+                    break
+
+    # auto-detecta separador se o configurado não aparece na primeira linha
+    if lines and sep not in lines[0]:
+        for candidate_sep in (";", "\t", "|"):
+            if candidate_sep in lines[0]:
+                log.warning(f"    Separador '{sep}' não encontrado — usando '{candidate_sep}'")
+                sep = candidate_sep
+                break
 
     reader = csv.DictReader(lines, delimiter=sep)
 
