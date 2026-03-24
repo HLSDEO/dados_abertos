@@ -41,7 +41,7 @@ FONTE = {
     "fonte_nome":      "TSE — Tribunal Superior Eleitoral",
     "fonte_descricao": "Dados Eleitorais Abertos",
     "fonte_url":       "https://dadosabertos.tse.jus.br",
-    "fonte_licenca":   "Dados Abertos",
+    "fonte_licenca":   "Dados Abertos — https://creativecommons.org/licenses/by/4.0/",
 }
 
 # ── Anos disponíveis ──────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ ANOS_MUNICIPAIS = [2024, 2020, 2016, 2012, 2008, 2004, 2000]
 ANOS_GERAIS     = [2022, 2018, 2014, 2010, 2006, 2002]
 ANOS_TODOS      = sorted(set(ANOS_MUNICIPAIS + ANOS_GERAIS), reverse=True)
 
-# ── Colunas de interesse (candidatos) ────────────────────────────────────────
+# ── Colunas de interesse — candidatos ────────────────────────────────────────
 COLUNAS_CAND = {
     "ANO_ELEICAO", "CD_TIPO_ELEICAO", "NM_TIPO_ELEICAO", "NR_TURNO",
     "CD_ELEICAO", "DS_ELEICAO", "DT_ELEICAO", "SG_UF", "SG_UE", "NM_UE",
@@ -61,8 +61,8 @@ COLUNAS_CAND = {
     "CD_SIT_TOT_TURNO", "DS_SIT_TOT_TURNO",
 }
 
-# ── Mapeamento de colunas — doações (3 eras) ──────────────────────────────────
-DOACAO_COLS_NEW = {           # 2018+
+# ── Mapeamento de colunas — doações (4 formatos) ─────────────────────────────
+DOACAO_COLS_NEW = {           # 2018+  (.csv com cabeçalho em inglês/abreviado)
     "SQ_CANDIDATO":       "sq_candidato",
     "NR_CPF_CNPJ_DOADOR": "cpf_cnpj_doador",
     "NM_DOADOR":          "nome_doador",
@@ -72,14 +72,18 @@ DOACAO_COLS_NEW = {           # 2018+
     "SG_PARTIDO":         "partido",
     "NR_CANDIDATO":       "nr_candidato",
 }
-DOACAO_COLS_LEGACY = {        # 2010-2016
+DOACAO_COLS_TXT = {           # 2010-2016  (.txt por UF, cabeçalho em português)
     "Sequencial Candidato": "sq_candidato",
     "CPF/CNPJ do doador":   "cpf_cnpj_doador",
     "Nome do doador":       "nome_doador",
     "Valor receita":        "valor",
     "Nome candidato":       "nome_candidato",
+    "Sigla Partido":        "partido",
+    "UF":                   "uf",
+    "Cargo":                "cargo",
 }
-DOACAO_COLS_EARLY: dict[str, list[str]] = {   # 2002-2008
+DOACAO_COLS_LEGACY = DOACAO_COLS_TXT   # alias mantido para compatibilidade
+DOACAO_COLS_EARLY: dict[str, list[str]] = {   # 2002-2008  (.csv pasta brasil)
     "sq_candidato":    ["SEQUENCIAL_CANDIDATO"],
     "cpf_cnpj_doador": ["CD_CPF_CNPJ_DOADOR", "CD_CPF_CGC",
                         "CD_CPF_CGC_DOA", "NUMERO_CPF_CGC_DOADOR"],
@@ -190,16 +194,15 @@ class _CsvAppender:
 # ── Doações — detecção de formato ────────────────────────────────────────────
 
 def _detect_doacao_mapping(fieldnames: list[str]) -> dict[str, str] | None:
+    """Detecta o formato pelo cabeçalho e retorna mapeamento col_orig → col_dest."""
     fset = set(fieldnames)
+    # 2018+: colunas abreviadas em maiúsculo
     if "SQ_CANDIDATO" in fset and "VR_RECEITA" in fset:
         return DOACAO_COLS_NEW
-    if "Sequencial Candidato" in fset:
-        m = dict(DOACAO_COLS_LEGACY)
-        for col in fieldnames:
-            if "partido" in col.lower():
-                m[col] = "partido"
-                break
-        return m
+    # 2010-2016: colunas em português (TXT por UF)
+    if "Sequencial Candidato" in fset and "CPF/CNPJ do doador" in fset:
+        return DOACAO_COLS_TXT
+    # 2002-2008: variantes antigas
     mapping = {}
     for dest, variants in DOACAO_COLS_EARLY.items():
         for v in variants:
@@ -207,6 +210,28 @@ def _detect_doacao_mapping(fieldnames: list[str]) -> dict[str, str] | None:
                 mapping[v] = dest
                 break
     return mapping if mapping else None
+
+
+def _list_doacao_files(zf: zipfile.ZipFile) -> list[str]:
+    """
+    Lista arquivos de receita dentro do ZIP independente de extensão.
+    Suporta:
+      - 2018+: receitas_candidatos_{ano}_{UF}.csv
+      - 2010-2016: candidato/{UF}/ReceitasCandidatos.txt
+      - 2002-2008: prestacao_contas_{ano}/receitas_candidatos_{ano}_brasil.csv
+    """
+    todos = [n for n in zf.namelist() if "__macosx" not in n.lower()]
+
+    # arquivos de receita (.csv ou .txt)
+    receitas = [
+        n for n in todos
+        if ("receita" in n.lower() or "Receita" in n)
+        and (n.lower().endswith(".csv") or n.lower().endswith(".txt"))
+    ]
+
+    # prefere consolidado BRASIL; senão usa todos os estados
+    brasil = [n for n in receitas if "brasil" in n.lower()]
+    return brasil or receitas
 
 
 # ── Candidatos ────────────────────────────────────────────────────────────────
@@ -275,23 +300,19 @@ def _process_doacoes(ano: int) -> None:
     appender = _CsvAppender(out_path)
     try:
         with zipfile.ZipFile(tmp_zip) as zf:
-            todos = [n for n in zf.namelist()
-                     if n.lower().endswith(".csv") and "__macosx" not in n.lower()]
+            csv_names = _list_doacao_files(zf)
+            todos_count = len([n for n in zf.namelist()
+                               if not n.endswith("/")])
 
-        log.info(f"    ZIP: {len(todos)} CSV(s)  ex: {todos[:3]}")
-
-        # prioridade: receitas consolidadas BRASIL → receitas por estado → todos
-        receitas  = [n for n in todos if "receita" in n.lower()]
-        brasil    = [n for n in receitas if "brasil" in n.lower()]
-        csv_names = brasil or receitas or todos
+        log.info(f"    ZIP: {todos_count} arquivo(s) total")
 
         if not csv_names:
-            log.warning(f"    ZIP vazio para {ano}")
+            log.warning(f"    Nenhum arquivo de receita encontrado no ZIP de {ano}")
             return
 
-        log.info(f"    Processando {len(csv_names)} arquivo(s)"
-                 + (" [BRASIL]" if brasil else
-                    " [por estado]" if receitas else " [todos]"))
+        brasil = [n for n in csv_names if "brasil" in n.lower()]
+        log.info(f"    Processando {len(csv_names)} arquivo(s) de receita"
+                 + (" [BRASIL consolidado]" if brasil else " [por estado/UF]"))
 
         for name in csv_names:
             with zipfile.ZipFile(tmp_zip) as zf:
