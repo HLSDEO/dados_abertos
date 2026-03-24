@@ -27,7 +27,6 @@ Rels: SOCIO_DE, LOCALIZADA_EM
 import csv
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -366,12 +365,35 @@ def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], 
     return pf_rows, pj_rows, ext_rows
 
 
-# ── Loader de batches ─────────────────────────────────────────────────────────
+# ── Loader de batches com retry em deadlock ───────────────────────────────────
 
-def _run_batches(session, query: str, rows: list[dict], extra_params: dict = None) -> None:
+def _run_batches(session, query: str, rows: list[dict], extra_params: dict = None,
+                 retries: int = 5) -> None:
+    """
+    Executa query em batches com retry automático em DeadlockDetected.
+    Neo4j lança TransientError.Transaction.DeadlockDetected quando duas
+    transações concorrentes tentam adquirir o mesmo lock — é seguro retentar.
+    """
+    import time
+    from neo4j.exceptions import TransientError
+
     params = extra_params or {}
     for i in range(0, len(rows), BATCH):
-        session.run(query, rows=rows[i : i + BATCH], **params)
+        batch = rows[i : i + BATCH]
+        for attempt in range(1, retries + 1):
+            try:
+                session.run(query, rows=batch, **params)
+                break
+            except TransientError as exc:
+                if "DeadlockDetected" in str(exc) and attempt < retries:
+                    wait = attempt * 0.5   # backoff: 0.5s, 1s, 1.5s, 2s
+                    log.warning(f"    Deadlock detectado — retry {attempt}/{retries} em {wait}s")
+                    time.sleep(wait)
+                else:
+                    raise
+
+
+_LOG_EVERY = 500_000   # loga progresso a cada N linhas
 
 
 # ── Carga de cada tipo (roda em thread própria) ───────────────────────────────
@@ -384,6 +406,8 @@ def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
             prep = _t_empresas(chunk, tables)
             _run_batches(session, Q_EMPRESA, prep)
             total += len(prep)
+            if total % _LOG_EVERY < CHUNK_SIZE:
+                log.info(f"    [empresas] {total:,} linhas inseridas...")
     log.info(f"    [empresas] ✓ {total:,}")
 
 
@@ -398,6 +422,8 @@ def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str) -
                          extra_params={"fonte_nome": FONTE["fonte_nome"]})
             est_total += len(updates)
             rel_total += len(rels)
+            if est_total % _LOG_EVERY < CHUNK_SIZE:
+                log.info(f"    [estabelecimentos] {est_total:,} linhas, {rel_total:,} rels...")
     log.info(f"    [estabelecimentos] ✓ {est_total:,} | LOCALIZADA_EM {rel_total:,}")
 
 
@@ -409,6 +435,8 @@ def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
             prep = _t_simples(chunk)
             _run_batches(session, Q_SIMPLES, prep)
             total += len(prep)
+            if total % _LOG_EVERY < CHUNK_SIZE:
+                log.info(f"    [simples] {total:,} linhas inseridas...")
     log.info(f"    [simples] ✓ {total:,}")
 
 
@@ -427,6 +455,9 @@ def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
             if ext:
                 _run_batches(session, Q_SOCIO_EXT, ext)
                 ext_t += len(ext)
+            total = pf_t + pj_t + ext_t
+            if total % _LOG_EVERY < CHUNK_SIZE:
+                log.info(f"    [socios] {total:,} (PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,})...")
     log.info(f"    [socios] ✓ PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,}")
 
 
@@ -504,18 +535,14 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
         log.info("  [2/3] Simples (sequencial — enriquece Empresa)...")
         _load_simples(driver, csv_dir, snapshot)
 
-        log.info(f"  [3/3] Estabelecimentos + Socios (paralelo, {WORKERS} workers)...")
-        tasks = {
-            "estabelecimentos": lambda: _load_estabelecimentos(driver, csv_dir, tables, snapshot),
-            "socios":           lambda: _load_socios(driver, csv_dir, tables, snapshot),
-        }
-        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            futures = {pool.submit(fn): name for name, fn in tasks.items()}
-            for future in as_completed(futures):
-                name = futures[future]
-                exc  = future.exception()
-                if exc:
-                    log.error(f"    [{name}] ERRO: {exc}", exc_info=exc)
+        # Estabelecimentos e Sócios sequenciais — ambos escrevem em :Empresa,
+        # paralelismo causa DeadlockDetected. Sequencial é mais seguro e
+        # o retry em _run_batches cobre eventuais contenções residuais.
+        log.info("  [3/4] Estabelecimentos (sequencial)...")
+        _load_estabelecimentos(driver, csv_dir, tables, snapshot)
+
+        log.info("  [4/4] Sócios (sequencial)...")
+        _load_socios(driver, csv_dir, tables, snapshot)
 
         # ── liga municípios RF → nós canônicos IBGE ───────────────────────
         log.info("  Linkando municípios RF → IBGE...")
