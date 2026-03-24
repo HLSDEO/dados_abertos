@@ -211,43 +211,133 @@ def _process_domain(out_name: str, columns: list[str], zip_path: Path,
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _process_main(out_name: str, columns: list[str], zip_paths: list[Path],
-                  out_dir: Path, snapshot: str,
-                  transform_fn=None, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> None:
+def _process_one_zip(
+    args: tuple,
+) -> tuple[int, Path]:
     """
-    Processa arquivos numerados (Empresas0..N, Socios0..N, etc.)
-    gravando diretamente no CSV de saída chunk a chunk.
-    Nunca acumula mais de chunk_size linhas em memória.
+    Processa um único ZIP em um worker separado.
+    Retorna (zip_idx, path_do_csv_parcial).
+    Projetado para rodar em ProcessPoolExecutor.
     """
-    writer = _CsvWriter(out_dir / f"{out_name}.csv")
-    fonte  = _fonte_cols(FONTE["fonte_url"], snapshot)
+    zip_idx, zip_path, columns, snapshot, transform_fn, chunk_size, tmp_root = args
 
-    for zip_idx, zip_path in enumerate(zip_paths):
-        log.info(f"    {zip_path.name}  ({zip_idx+1}/{len(zip_paths)})")
-        tmp = Path(tempfile.mkdtemp())
-        try:
-            files = _extract_zip(zip_path, tmp)
-            for f in files:
-                chunk_num = 0
-                try:
-                    for chunk in _iter_rf_chunks(f, columns, chunk_size):
-                        chunk_num += 1
-                        if transform_fn:
-                            chunk = transform_fn(chunk)
-                        for k, v in fonte.items():
-                            chunk[k] = v
-                        writer.write(chunk)
-                except Exception as exc:
-                    log.error(
-                        f"    ERRO em {zip_path.name} / {f.name} "
-                        f"(chunk {chunk_num}): {exc}",
-                        exc_info=True,
-                    )
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+    tmp_zip  = Path(tempfile.mkdtemp(dir=tmp_root))
+    out_part = tmp_root / f"_part_{zip_idx:04d}.csv"
+    writer   = _CsvWriter(out_part)
+    fonte    = _fonte_cols(FONTE["fonte_url"], snapshot)
 
-    total = writer.close()
-    log.info(f"    → {out_name}.csv  ({total:,} linhas)")
+    try:
+        files = _extract_zip(zip_path, tmp_zip)
+        for f in files:
+            chunk_num = 0
+            try:
+                for chunk in _iter_rf_chunks(f, columns, chunk_size):
+                    chunk_num += 1
+                    if transform_fn:
+                        chunk = transform_fn(chunk)
+                    for k, v in fonte.items():
+                        chunk[k] = v
+                    writer.write(chunk)
+            except Exception as exc:
+                log.error(
+                    f"    ERRO em {zip_path.name} / {f.name} "
+                    f"(chunk {chunk_num}): {exc}",
+                    exc_info=True,
+                )
+    finally:
+        shutil.rmtree(tmp_zip, ignore_errors=True)
+
+    rows = writer.close()
+    return zip_idx, out_part, rows
+
+
+def _process_main(
+    out_name: str,
+    columns: list[str],
+    zip_paths: list[Path],
+    out_dir: Path,
+    snapshot: str,
+    transform_fn=None,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
+    workers: int = 1,
+) -> None:
+    """
+    Processa arquivos numerados (Empresas0..N, Socios0..N, etc.).
+
+    workers=1  → sequencial (comportamento original)
+    workers>1  → cada ZIP é processado em paralelo num processo separado,
+                 gerando um CSV parcial; ao final os parciais são
+                 concatenados em ordem no arquivo de saída definitivo.
+
+    RAM máxima por worker: chunk_size linhas (~25 MB a 50k).
+    Disco extra temporário: ~tamanho de um ZIP descomprimido por worker ativo.
+    """
+    if workers < 1:
+        workers = 1
+
+    tmp_root = Path(tempfile.mkdtemp())
+
+    try:
+        job_args = [
+            (idx, zp, columns, snapshot, transform_fn, chunk_size, tmp_root)
+            for idx, zp in enumerate(zip_paths)
+        ]
+
+        if workers == 1:
+            # ── modo sequencial ───────────────────────────────────────────
+            results = []
+            for args in job_args:
+                idx, zp = args[0], args[1]
+                log.info(f"    {zp.name}  ({idx+1}/{len(zip_paths)})")
+                results.append(_process_one_zip(args))
+        else:
+            # ── modo paralelo (threads — I/O bound, sem problema de pickle) ──
+            effective = min(workers, len(zip_paths))
+            log.info(f"    Paralelo: {effective} threads para {len(zip_paths)} ZIPs")
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            futures = {}
+            results_map = {}
+            with ThreadPoolExecutor(max_workers=effective) as pool:
+                for args in job_args:
+                    f = pool.submit(_process_one_zip, args)
+                    futures[f] = args[1].name
+                for future in as_completed(futures):
+                    zip_name = futures[future]
+                    try:
+                        idx, part_path, rows = future.result()
+                        results_map[idx] = (part_path, rows)
+                        log.info(f"    ✓ {zip_name}  ({rows:,} linhas)")
+                    except Exception as exc:
+                        log.error(f"    ERRO em {zip_name}: {exc}", exc_info=True)
+            results = [
+                (idx, results_map[idx][0], results_map[idx][1])
+                for idx in sorted(results_map)
+            ]
+
+        # ── concatena parciais em ordem no CSV final ──────────────────────
+        final_writer = _CsvWriter(out_dir / f"{out_name}.csv")
+        total = 0
+        for idx, part_path, part_rows in sorted(results, key=lambda r: r[0]):
+            if not part_path.exists():
+                continue
+            with open(part_path, encoding="utf-8-sig") as fh:
+                reader = csv.DictReader(fh)
+                for row in reader:
+                    if final_writer._writer is None:
+                        final_writer._writer = csv.DictWriter(
+                            final_writer._file, fieldnames=list(row.keys())
+                        )
+                        final_writer._writer.writeheader()
+                    final_writer._writer.writerow(row)
+                    total += 1
+            part_path.unlink(missing_ok=True)
+
+        final_writer._rows = total
+        written = final_writer.close()
+        log.info(f"    → {out_name}.csv  ({written:,} linhas)")
+
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 # ── Transformações específicas ────────────────────────────────────────────────
@@ -287,8 +377,8 @@ def _transform_simples(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run(chunk_size: int = _DEFAULT_CHUNK_SIZE):
-    log.info(f"[cnpj] Iniciando extração de ZIPs  (chunk_size={chunk_size:,})")
+def run(chunk_size: int = _DEFAULT_CHUNK_SIZE, workers: int = 1):
+    log.info(f"[cnpj] Iniciando extração de ZIPs  (chunk_size={chunk_size:,}, workers={workers})")
     snapshots = _discover_snapshots()
     if not snapshots:
         log.warning(f"  Nenhum snapshot encontrado em {DATA_DIR}")
@@ -303,7 +393,7 @@ def run(chunk_size: int = _DEFAULT_CHUNK_SIZE):
 
         zips = {z.stem.upper(): z for z in snap_dir.glob("*.zip")}
 
-        # ── tabelas de domínio (pequenas, sem chunking especial) ──────────
+        # ── tabelas de domínio (pequenas, sem paralelismo) ────────────────
         domain_map = {
             "CNAES":         ("cnaes",        DOMAIN_SCHEMAS["cnaes"]),
             "NATUREZAS":     ("naturezas",     DOMAIN_SCHEMAS["naturezas"]),
@@ -320,33 +410,33 @@ def run(chunk_size: int = _DEFAULT_CHUNK_SIZE):
             else:
                 log.warning(f"    ZIP não encontrado: {zip_stem}.zip")
 
-        # ── arquivos numerados (grandes — processados chunk a chunk) ──────
+        # ── arquivos numerados (grandes — paralelizáveis) ─────────────────
         def _numbered(prefix: str) -> list[Path]:
             return sorted(snap_dir.glob(f"{prefix}*.zip"), key=lambda p: p.stem)
 
         emp_zips = _numbered("Empresas")
         if emp_zips:
-            log.info(f"    Empresas ({len(emp_zips)} ZIPs, chunk={chunk_size:,})")
+            log.info(f"    Empresas ({len(emp_zips)} ZIPs, chunk={chunk_size:,}, workers={workers})")
             _process_main("empresas", EMPRESAS_COLS, emp_zips, out_dir,
-                          snapshot, _transform_empresas, chunk_size)
+                          snapshot, _transform_empresas, chunk_size, workers)
 
         soc_zips = _numbered("Socios")
         if soc_zips:
-            log.info(f"    Socios ({len(soc_zips)} ZIPs, chunk={chunk_size:,})")
+            log.info(f"    Socios ({len(soc_zips)} ZIPs, chunk={chunk_size:,}, workers={workers})")
             _process_main("socios", SOCIOS_COLS, soc_zips, out_dir,
-                          snapshot, _transform_socios, chunk_size)
+                          snapshot, _transform_socios, chunk_size, workers)
 
         est_zips = _numbered("Estabelecimentos")
         if est_zips:
-            log.info(f"    Estabelecimentos ({len(est_zips)} ZIPs, chunk={chunk_size:,})")
+            log.info(f"    Estabelecimentos ({len(est_zips)} ZIPs, chunk={chunk_size:,}, workers={workers})")
             _process_main("estabelecimentos", ESTABELECIMENTOS_COLS, est_zips, out_dir,
-                          snapshot, _transform_estabelecimentos, chunk_size)
+                          snapshot, _transform_estabelecimentos, chunk_size, workers)
 
         sim_zip = zips.get("SIMPLES")
         if sim_zip:
             log.info(f"    Simples (chunk={chunk_size:,})")
             _process_main("simples", SIMPLES_COLS, [sim_zip], out_dir,
-                          snapshot, _transform_simples, chunk_size)
+                          snapshot, _transform_simples, chunk_size, 1)  # 1 ZIP só
 
         log.info(f"  [snapshot {snapshot}] CSVs salvos em {out_dir}")
 

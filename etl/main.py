@@ -3,27 +3,25 @@
 etl/main.py  –  Orquestrador ETL via CLI
 
 Uso:
-  python main.py download                        # baixa / extrai tudo
-  python main.py download ibge                   # só ibge
-  python main.py download cnpj                   # só cnpj (extrai ZIPs locais)
-  python main.py download cnpj --chunk 100000    # com chunk size customizado
-  python main.py pipeline                        # executa todos os pipelines
-  python main.py pipeline ibge                   # só ibge
-  python main.py pipeline cnpj                   # só cnpj (snapshot mais recente)
-  python main.py pipeline cnpj --history         # todos os snapshots
-  python main.py run                             # download + pipeline (tudo)
-  python main.py run cnpj --chunk 75000          # cnpj com chunk customizado
-  python main.py run cnpj --chunk 75000 --history
+  python main.py download                                  # baixa / extrai tudo
+  python main.py download cnpj                             # só cnpj
+  python main.py download cnpj --chunk 100000              # chunk customizado
+  python main.py download cnpj --workers 4                 # 4 ZIPs em paralelo
+  python main.py download cnpj --chunk 50000 --workers 4   # ambos
+  python main.py pipeline cnpj --history                   # todos os snapshots
+  python main.py run cnpj --chunk 75000 --workers 4
 
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
+  --workers N   ZIPs processados em paralelo (default: 1 = sequencial)
   --history     Processa todos os snapshots (só pipelines que suportam)
 
 Variáveis de ambiente (ou .env):
   NEO4J_URI       bolt://localhost:7687
   NEO4J_USER      neo4j
-  NEO4J_PASSWORD  senha123
-  CHUNK_SIZE      50000   (sobrescrito por --chunk)
+  NEO4J_PASSWORD  changeme
+  CHUNK_SIZE      50000
+  WORKERS         1
 """
 
 import importlib.util
@@ -60,7 +58,7 @@ _load_dotenv()
 
 NEO4J_URI      = os.environ.get("NEO4J_URI",      "bolt://neo4j:7687")
 NEO4J_USER     = os.environ.get("NEO4J_USER",     "neo4j")
-NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "senha123")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
 
 
 # ── registry ──────────────────────────────────────────────────────────────────
@@ -85,6 +83,7 @@ def _load(rel_path: str):
 
 
 DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "50000"))
+DEFAULT_WORKERS    = int(os.environ.get("WORKERS",     "2"))
 
 
 # ── parse de flags ────────────────────────────────────────────────────────────
@@ -92,24 +91,29 @@ DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "50000"))
 def _parse_flags(flags: list[str]) -> dict:
     """
     Converte lista de flags em dict de opções.
-    Suporta:  --chunk 100000   --history
+    Suporta:  --chunk 100000   --workers 4   --history
     """
-    opts = {"history": False, "chunk_size": DEFAULT_CHUNK_SIZE}
+    opts = {
+        "history":    False,
+        "chunk_size": DEFAULT_CHUNK_SIZE,
+        "workers":    DEFAULT_WORKERS,
+    }
     i = 0
     while i < len(flags):
         f = flags[i]
         if f == "--history":
             opts["history"] = True
-        elif f == "--chunk":
+        elif f in ("--chunk", "--workers"):
+            key = "chunk_size" if f == "--chunk" else "workers"
             if i + 1 < len(flags):
                 try:
-                    opts["chunk_size"] = int(flags[i + 1])
+                    opts[key] = int(flags[i + 1])
                     i += 1
                 except ValueError:
-                    log.error(f"--chunk requer um número inteiro, recebido: '{flags[i+1]}'")
+                    log.error(f"{f} requer um número inteiro, recebido: '{flags[i+1]}'")
                     sys.exit(1)
             else:
-                log.error("--chunk requer um valor, ex: --chunk 100000")
+                log.error(f"{f} requer um valor, ex: {f} 4")
                 sys.exit(1)
         else:
             log.warning(f"Flag desconhecida ignorada: '{f}'")
@@ -130,7 +134,10 @@ def do_download(names: list[str], opts: dict):
         kwargs = {}
         if "chunk_size" in sig.parameters:
             kwargs["chunk_size"] = opts["chunk_size"]
-            log.info(f"  chunk_size={opts['chunk_size']:,}")
+        if "workers" in sig.parameters:
+            kwargs["workers"] = opts["workers"]
+        if kwargs:
+            log.info(f"  chunk_size={opts['chunk_size']:,}  workers={opts['workers']}")
         mod.run(**kwargs)
 
 
@@ -175,7 +182,7 @@ def main():
     while i < len(rest):
         if rest[i].startswith("--"):
             raw_flags.append(rest[i])
-            if rest[i] == "--chunk" and i + 1 < len(rest) and not rest[i+1].startswith("--"):
+            if rest[i] in ("--chunk", "--workers") and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
         i += 1
