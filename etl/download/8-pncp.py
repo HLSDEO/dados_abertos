@@ -83,7 +83,7 @@ def _make_client(timeout: int = TIMEOUT) -> httpx.Client:
         timeout=timeout,
         follow_redirects=True,
         headers={
-            "User-Agent": "dados-abertos-etl/1.0 (pesquisa dados públicos BR)",
+            "User-Agent": "dados-abertos-etl/1.0 (pesquisa dados publicos BR)",
             "Accept":     "application/json",
         },
     )
