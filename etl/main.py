@@ -78,17 +78,17 @@ DOWNLOADS = {
     "tse":                  "download/3-tse.py",
     "emendas_cgu":          "download/4-emendas_cgu.py",
     "tesouro_transparente": "download/5-tesouro_transparente.py",
-    "servidores":           "download/6-servidores.py",
+    "servidores_cgu":       "download/6-servidores_cgu.py",
     "cpgf":                 "download/10-cpgf.py",
 }
 
 PIPELINES = {
-    "ibge":        "pipeline/1-ibge.py",
-    "cnpj":        "pipeline/2-cnpj.py",
-    "tse":         "pipeline/3-tse.py",
-    "siafi":       "pipeline/4-siafi.py",
-    "emendas_cgu": "pipeline/5-emendas_cgu.py",
-    "servidores":  "pipeline/6-servidores.py",
+    "ibge":             "pipeline/1-ibge.py",
+    "cnpj":             "pipeline/2-cnpj.py",
+    "tse":              "pipeline/3-tse.py",
+    "siafi":            "pipeline/4-siafi.py",
+    "emendas_cgu":      "pipeline/5-emendas_cgu.py",
+    "servidores_cgu":   "pipeline/6-servidores_cgu.py",
 }
 
 ANALYTICS = {
