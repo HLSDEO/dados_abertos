@@ -44,14 +44,12 @@ FONTE = {
     "fonte_licenca":   "Dados Abertos — https://creativecommons.org/licenses/by/4.0/",
 }
 
-# Categorias de servidores
-CATEGORIAS = ["SIAPE", "BACEN", "Militares"]
-
-# Tipos de arquivo por categoria
+# Nomes exatos dos ZIPs no CGU (sem o prefixo YYYYMM_)
+# URL real: {CGU_BASE}/{YYYYMM}_{nome}.zip
 TIPOS = {
-    "SIAPE":     ["Servidores_SIAPE_Cadastro",     "Servidores_SIAPE_Remuneracao"],
-    "BACEN":     ["Servidores_BACEN_Cadastro",     "Servidores_BACEN_Remuneracao"],
-    "Militares": ["Militares_SIAPE_Cadastro",      "Militares_SIAPE_Remuneracao"],
+    "SIAPE":     ["Servidores_SIAPE"],
+    "BACEN":     ["Servidores_BACEN"],
+    "Militares": ["Militares"],
 }
 
 # Colunas de interesse — Cadastro
@@ -189,20 +187,11 @@ COLS_VALOR = {
 }
 
 
-def _extract_csv(tmp_zip: Path, tipo: str, col_map: dict,
-                 url: str, categoria: str, ano: int, mes: int) -> list[dict]:
-    """Extrai CSV do ZIP, filtra colunas e normaliza."""
+def _extract_csv_member(tmp_zip: Path, member: str, col_map: dict,
+                        url: str, categoria: str, ano: int, mes: int) -> list[dict]:
+    """Extrai um CSV específico do ZIP, filtra colunas e normaliza."""
     with zipfile.ZipFile(tmp_zip) as zf:
-        members = zf.namelist()
-        target = next(
-            (m for m in members if m.lower().endswith(".csv")
-             and "__macosx" not in m.lower()),
-            None,
-        )
-        if not target:
-            log.warning(f"    Nenhum CSV em {tipo}")
-            return []
-        raw  = zf.read(target)
+        raw = zf.read(member)
 
     # detecta encoding
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
@@ -288,27 +277,41 @@ def _process_mes(ano: int, mes: int) -> None:
     cad_total  = rem_total = 0
     date_str   = f"{ano}{mes:02d}"
 
-    for categoria, tipos in TIPOS.items():
-        for tipo in tipos:
-            # nome do arquivo varia: SIAPE→Servidores_SIAPE, Militares→Militares_SIAPE
-            filename = f"{date_str}_{tipo}.zip"
+    for categoria, nomes in TIPOS.items():
+        for nome in nomes:
+            # URL exata: YYYYMM_Servidores_SIAPE.zip / YYYYMM_Servidores_BACEN.zip / YYYYMM_Militares.zip
+            filename = f"{date_str}_{nome}.zip"
             url      = f"{CGU_BASE}/{filename}"
             tmp_zip  = _download_to_tmp(url)
             if not tmp_zip:
                 continue
 
             try:
-                is_cad = "Cadastro" in tipo
-                col_map = CADASTRO_COLS if is_cad else REMUNERACAO_COLS
-                rows    = _extract_csv(tmp_zip, tipo, col_map, url, categoria, ano, mes)
-                if rows:
-                    if is_cad:
-                        cad_writer.write(rows)
-                        cad_total += len(rows)
-                    else:
-                        rem_writer.write(rows)
-                        rem_total += len(rows)
-                    log.info(f"    {tipo}: {len(rows):,} linhas")
+                # Cada ZIP contém múltiplos CSVs — separamos Cadastro de Remuneracao pelo nome
+                with zipfile.ZipFile(tmp_zip) as zf:
+                    members = [m for m in zf.namelist()
+                               if m.lower().endswith(".csv") and "__macosx" not in m.lower()]
+
+                log.info(f"    {filename}: {len(members)} CSV(s) → {[m for m in members[:4]]}")
+
+                for member in members:
+                    is_cad = "cadastro" in member.lower()
+                    is_rem = "remuner" in member.lower()
+                    if not is_cad and not is_rem:
+                        log.warning(f"    Arquivo não reconhecido: {member} — pulando")
+                        continue
+
+                    col_map = CADASTRO_COLS if is_cad else REMUNERACAO_COLS
+                    rows    = _extract_csv_member(tmp_zip, member, col_map,
+                                                  url, categoria, ano, mes)
+                    if rows:
+                        if is_cad:
+                            cad_writer.write(rows)
+                            cad_total += len(rows)
+                        else:
+                            rem_writer.write(rows)
+                            rem_total += len(rows)
+                        log.info(f"    {member}: {len(rows):,} linhas")
             finally:
                 tmp_zip.unlink(missing_ok=True)
 
@@ -317,7 +320,6 @@ def _process_mes(ano: int, mes: int) -> None:
     cad_writer.close()
     rem_writer.close()
 
-    # remove arquivos vazios
     if cad_total == 0:
         cad_path.unlink(missing_ok=True)
     if rem_total == 0:
