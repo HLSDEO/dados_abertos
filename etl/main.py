@@ -78,6 +78,7 @@ DOWNLOADS = {
     "tse":                  "download/3-tse.py",
     "emendas_cgu":          "download/4-emendas_cgu.py",
     "tesouro_transparente": "download/5-tesouro_transparente.py",
+    "servidores":           "download/6-servidores.py",
     "cpgf":                 "download/10-cpgf.py",
 }
 
@@ -87,6 +88,7 @@ PIPELINES = {
     "tse":         "pipeline/3-tse.py",
     "siafi":       "pipeline/4-siafi.py",
     "emendas_cgu": "pipeline/5-emendas_cgu.py",
+    "servidores":  "pipeline/6-servidores.py",
 }
 
 ANALYTICS = {
@@ -115,7 +117,9 @@ def _parse_flags(flags: list[str]) -> dict:
         "full":       False,
         "chunk_size": DEFAULT_CHUNK_SIZE,
         "workers":    DEFAULT_WORKERS,
-        "eleicoes":   [],          # lista de anos — vazia = todos
+        "eleicoes":   [],   # --eleicao ANO (repetível)
+        "anos":       [],   # --ano ANO    (repetível)
+        "meses":      [],   # --mes MES    (repetível)
     }
     i = 0
     while i < len(flags):
@@ -124,7 +128,7 @@ def _parse_flags(flags: list[str]) -> dict:
             opts["history"] = True
         elif f == "--full":
             opts["full"] = True
-        elif f in ("--chunk", "--workers", "--eleicao"):
+        elif f in ("--chunk", "--workers", "--eleicao", "--ano", "--mes"):
             if i + 1 < len(flags):
                 try:
                     val = int(flags[i + 1])
@@ -136,10 +140,14 @@ def _parse_flags(flags: list[str]) -> dict:
                     opts["chunk_size"] = val
                 elif f == "--workers":
                     opts["workers"] = val
-                else:  # --eleicao
+                elif f == "--eleicao":
                     opts["eleicoes"].append(val)
+                elif f == "--ano":
+                    opts["anos"].append(val)
+                elif f == "--mes":
+                    opts["meses"].append(val)
             else:
-                log.error(f"{f} requer um valor, ex: {f} 2024")
+                log.error(f"{f} requer um valor, ex: {f} 2025")
                 sys.exit(1)
         else:
             log.warning(f"Flag desconhecida ignorada: '{f}'")
@@ -163,10 +171,17 @@ def do_download(names: list[str], opts: dict):
         if "workers" in sig.parameters:
             kwargs["workers"] = opts["workers"]
         if "eleicoes" in sig.parameters:
-            # None = todos; lista vazia também vira None (sem filtro)
             kwargs["eleicoes"] = opts["eleicoes"] or None
             if kwargs["eleicoes"]:
                 log.info(f"  eleicoes={kwargs['eleicoes']}")
+        if "anos" in sig.parameters:
+            kwargs["anos"] = opts["anos"] or None
+            if kwargs["anos"]:
+                log.info(f"  anos={kwargs['anos']}")
+        if "meses" in sig.parameters:
+            kwargs["meses"] = opts["meses"] or None
+            if kwargs["meses"]:
+                log.info(f"  meses={kwargs['meses']}")
         if any(k in kwargs for k in ("chunk_size", "workers")):
             log.info(f"  chunk_size={opts['chunk_size']:,}  workers={opts['workers']}")
         mod.run(**kwargs)
@@ -193,6 +208,14 @@ def do_pipeline(names: list[str], opts: dict):
             kwargs["eleicoes"] = opts["eleicoes"] or None
             if kwargs["eleicoes"]:
                 log.info(f"  eleicoes={kwargs['eleicoes']}")
+        if "anos" in sig.parameters:
+            kwargs["anos"] = opts["anos"] or None
+            if kwargs["anos"]:
+                log.info(f"  anos={kwargs['anos']}")
+        if "meses" in sig.parameters:
+            kwargs["meses"] = opts["meses"] or None
+            if kwargs["meses"]:
+                log.info(f"  meses={kwargs['meses']}")
         mod.run(**kwargs)
 
 
@@ -230,7 +253,7 @@ def main():
     while i < len(rest):
         if rest[i].startswith("--"):
             raw_flags.append(rest[i])
-            if rest[i] in ("--chunk", "--workers", "--eleicao") \
+            if rest[i] in ("--chunk", "--workers", "--eleicao", "--ano", "--mes") \
                     and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
