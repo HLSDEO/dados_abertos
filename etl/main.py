@@ -101,7 +101,10 @@ ANALYTICS = {
 # ── loader dinâmico ───────────────────────────────────────────────────────────
 def _load(rel_path: str):
     path = ETL_DIR / rel_path
-    spec = importlib.util.spec_from_file_location(path.stem, path)
+    # usa o rel_path completo como nome do módulo para evitar colisão de cache
+    # entre download/7-sancoes_cgu.py e pipeline/7-sancoes_cgu.py (mesmo stem)
+    mod_name = rel_path.replace("/", ".").replace("\\", ".").rstrip(".py")
+    spec = importlib.util.spec_from_file_location(mod_name, path)
     mod  = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
