@@ -1,0 +1,445 @@
+"""
+Pipeline 5 - Emendas Parlamentares CGU → Neo4j
+
+Lê os CSVs de data/emendas_cgu/ e carrega no grafo.
+
+Arquivos:
+  emendas.csv   → nós :Emenda + vínculos geográficos e orçamentários
+  convenios.csv → rel :Emenda -[:TEM_CONVENIO]-> :Convenio
+  despesas.csv  → rel :Emenda -[:TEM_DESPESA]-> :Despesa
+
+Nós criados/atualizados:
+  (:Emenda)       — codigo_emenda como chave
+  (:Parlamentar)  — codigo_autor como chave → merge com :Pessoa pelo nome
+  (:FuncaoOrcamentaria) — codigo_funcao
+  (:Programa)     — codigo_programa
+
+Relacionamentos:
+  (:Parlamentar)-[:AUTORA_DE]->(:Emenda)
+  (:Emenda)-[:DESTINADA_A]->(:Municipio|:Estado)    ← pelo Código IBGE
+  (:Emenda)-[:CLASSIFICADA_EM]->(:FuncaoOrcamentaria)
+  (:Emenda)-[:TEM_DESPESA]->(:Despesa)
+  (:Emenda)-[:TEM_CONVENIO]->(:Convenio)
+"""
+
+import csv
+import logging
+import os
+from pathlib import Path
+
+from neo4j import GraphDatabase
+
+log = logging.getLogger(__name__)
+
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "emendas_cgu"
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "10000"))
+BATCH      = int(os.environ.get("NEO4J_BATCH", "500"))
+
+FONTE = {
+    "fonte_nome": "CGU — Portal da Transparência",
+    "fonte_url":  "https://portaldatransparencia.gov.br",
+}
+
+
+# ── Constraints e índices ─────────────────────────────────────────────────────
+
+Q_CONSTRAINTS = [
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Emenda)            REQUIRE n.codigo_emenda IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Parlamentar)       REQUIRE n.codigo_autor  IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:FuncaoOrcamentaria) REQUIRE n.codigo_funcao IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Programa)          REQUIRE n.codigo_programa IS UNIQUE",
+]
+
+Q_INDEXES = [
+    "CREATE INDEX emenda_ano   IF NOT EXISTS FOR (e:Emenda) ON (e.ano_emenda)",
+    "CREATE INDEX emenda_tipo  IF NOT EXISTS FOR (e:Emenda) ON (e.tipo_emenda)",
+    "CREATE INDEX parlamentar_nome IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
+]
+
+
+# ── Queries ───────────────────────────────────────────────────────────────────
+
+Q_PARLAMENTAR = """
+UNWIND $rows AS r
+MERGE (p:Parlamentar {codigo_autor: r.codigo_autor})
+SET p.nome_autor = r.nome_autor,
+    p.fonte_nome = r.fonte_nome,
+    p.fonte_url  = r.fonte_url
+"""
+
+Q_FUNCAO = """
+UNWIND $rows AS r
+MERGE (f:FuncaoOrcamentaria {codigo_funcao: r.codigo_funcao})
+SET f.nome_funcao    = r.nome_funcao,
+    f.codigo_subfuncao = r.codigo_subfuncao,
+    f.nome_subfuncao  = r.nome_subfuncao
+"""
+
+Q_PROGRAMA = """
+UNWIND $rows AS r
+MERGE (p:Programa {codigo_programa: r.codigo_programa})
+SET p.nome_programa = r.nome_programa
+"""
+
+Q_EMENDA = """
+UNWIND $rows AS r
+MERGE (e:Emenda {codigo_emenda: r.codigo_emenda})
+SET e.ano_emenda           = r.ano_emenda,
+    e.tipo_emenda          = r.tipo_emenda,
+    e.numero_emenda        = r.numero_emenda,
+    e.localidade_gasto     = r.localidade_gasto,
+    e.regiao               = r.regiao,
+    e.valor_empenhado      = toFloat(r.valor_empenhado),
+    e.valor_liquidado      = toFloat(r.valor_liquidado),
+    e.valor_pago           = toFloat(r.valor_pago),
+    e.valor_rp_inscrito    = toFloat(r.valor_rp_inscrito),
+    e.valor_rp_cancelado   = toFloat(r.valor_rp_cancelado),
+    e.valor_rp_pago        = toFloat(r.valor_rp_pago),
+    e.fonte_nome           = r.fonte_nome,
+    e.fonte_url            = r.fonte_url
+"""
+
+Q_AUTORIA = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MATCH (p:Parlamentar {codigo_autor: r.codigo_autor})
+MERGE (p)-[:AUTORA_DE]->(e)
+"""
+
+Q_EMENDA_MUNICIPIO = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MATCH (m:Municipio)
+WHERE m.id = r.codigo_ibge OR m.codigo_ibge = r.codigo_ibge
+MERGE (e)-[:DESTINADA_A]->(m)
+"""
+
+Q_EMENDA_ESTADO = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MATCH (est:Estado {sigla: r.uf})
+MERGE (e)-[:DESTINADA_A]->(est)
+"""
+
+Q_EMENDA_FUNCAO = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MATCH (f:FuncaoOrcamentaria {codigo_funcao: r.codigo_funcao})
+MERGE (e)-[:CLASSIFICADA_EM]->(f)
+"""
+
+Q_CONVENIO = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MERGE (c:Convenio {numero_convenio: r.numero_convenio})
+SET c.objeto         = r.objeto,
+    c.valor_emenda   = toFloat(r.valor_emenda),
+    c.situacao       = r.situacao,
+    c.fonte_nome     = r.fonte_nome
+MERGE (e)-[:TEM_CONVENIO]->(c)
+"""
+
+Q_DESPESA = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MERGE (d:Despesa {codigo_despesa: r.codigo_despesa})
+SET d.valor_empenhado  = toFloat(r.valor_empenhado),
+    d.valor_liquidado  = toFloat(r.valor_liquidado),
+    d.valor_pago       = toFloat(r.valor_pago),
+    d.nome_favorecido  = r.nome_favorecido,
+    d.cnpj_favorecido  = r.cnpj_favorecido,
+    d.fonte_nome       = r.fonte_nome
+MERGE (e)-[:TEM_DESPESA]->(d)
+WITH d, r
+WHERE r.cnpj_favorecido <> ""
+MERGE (emp:Empresa {cnpj_basico: left(r.cnpj_favorecido, 8)})
+MERGE (d)-[:PAGO_A]->(emp)
+"""
+
+# Merge Parlamentar → Pessoa (se CPF/nome bater com candidatos TSE)
+Q_LINK_PARLAMENTAR_PESSOA = """
+MATCH (par:Parlamentar)
+WHERE par.nome_autor IS NOT NULL
+WITH par, toUpper(trim(par.nome_autor)) AS nome_upper
+MATCH (p:Pessoa)
+WHERE toUpper(trim(p.nome)) = nome_upper
+   OR toUpper(trim(p.nome_urna)) = nome_upper
+MERGE (par)-[:MESMO_QUE]->(p)
+"""
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _iter_csv(path: Path):
+    if not path.exists():
+        log.warning(f"  {path.name} não encontrado — pulando")
+        return
+    total = 0
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f, delimiter=";")
+        # tenta detectar separador correto
+        if reader.fieldnames and len(reader.fieldnames) == 1:
+            f.seek(0)
+            reader = csv.DictReader(f, delimiter=",")
+        chunk = []
+        for row in reader:
+            row = {k: (v or "").strip() for k, v in row.items() if k is not None}
+            chunk.append(row)
+            if len(chunk) >= CHUNK_SIZE:
+                yield chunk
+                total += len(chunk)
+                chunk = []
+        if chunk:
+            total += len(chunk)
+            yield chunk
+    log.info(f"    {path.name}: {total:,} linhas")
+
+
+def _run_batches(session, query: str, rows: list[dict],
+                 retries: int = 5) -> None:
+    import time
+    from neo4j.exceptions import TransientError
+    for i in range(0, len(rows), BATCH):
+        batch = rows[i : i + BATCH]
+        for attempt in range(1, retries + 1):
+            try:
+                with session.begin_transaction() as tx:
+                    tx.run(query, rows=batch)
+                    tx.commit()
+                break
+            except TransientError as exc:
+                if "DeadlockDetected" in str(exc) and attempt < retries:
+                    import time as t; t.sleep(attempt * 0.5)
+                else:
+                    raise
+
+
+def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
+    import time
+    from neo4j.exceptions import ServiceUnavailable
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    for attempt in range(1, retries + 1):
+        try:
+            with driver.session() as s:
+                s.run("RETURN 1")
+            return driver
+        except ServiceUnavailable:
+            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
+            time.sleep(delay)
+    raise RuntimeError("Neo4j não disponível")
+
+
+def _safe_float(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return "0"
+    try:
+        float(s)
+        return s
+    except ValueError:
+        return "0"
+
+
+# ── Transforms ────────────────────────────────────────────────────────────────
+
+def _t_emendas(chunk: list[dict]) -> dict:
+    parlamentares, funcoes, programas = {}, {}, {}
+    emendas, autoriais = [], []
+    dest_mun, dest_est, dest_funcao = [], [], []
+
+    for r in chunk:
+        cod_e   = r.get("Código da Emenda", "").strip()
+        cod_aut = r.get("Código do Autor da Emenda", "").strip()
+        cod_f   = r.get("Código Função", "").strip()
+        cod_p   = r.get("Código Programa", "").strip()
+        cod_ibge = r.get("Código Município IBGE", "").strip()
+        uf       = r.get("UF", "").strip()
+
+        if not cod_e:
+            continue
+
+        if cod_aut and cod_aut not in parlamentares:
+            parlamentares[cod_aut] = {
+                "codigo_autor": cod_aut,
+                "nome_autor":   r.get("Nome do Autor da Emenda", "").strip(),
+                **FONTE,
+            }
+
+        if cod_f and cod_f not in funcoes:
+            funcoes[cod_f] = {
+                "codigo_funcao":    cod_f,
+                "nome_funcao":      r.get("Nome Função", "").strip(),
+                "codigo_subfuncao": r.get("Código Subfunção", "").strip(),
+                "nome_subfuncao":   r.get("Nome Subfunção", "").strip(),
+            }
+
+        if cod_p and cod_p not in programas:
+            programas[cod_p] = {
+                "codigo_programa": cod_p,
+                "nome_programa":   r.get("Nome Programa", "").strip(),
+            }
+
+        emendas.append({
+            "codigo_emenda":     cod_e,
+            "ano_emenda":        r.get("Ano da Emenda", "").strip(),
+            "tipo_emenda":       r.get("Tipo da Emenda", "").strip(),
+            "numero_emenda":     r.get("Número da Emenda", "").strip(),
+            "localidade_gasto":  r.get("Localidade do Gasto", "").strip(),
+            "regiao":            r.get("Região", "").strip(),
+            "valor_empenhado":   _safe_float(r.get("Valor Empenhado", "")),
+            "valor_liquidado":   _safe_float(r.get("Valor Liquidado", "")),
+            "valor_pago":        _safe_float(r.get("Valor Pago", "")),
+            "valor_rp_inscrito": _safe_float(r.get("Valor Restos A Pagar Inscritos", "")),
+            "valor_rp_cancelado":_safe_float(r.get("Valor Restos A Pagar Cancelados", "")),
+            "valor_rp_pago":     _safe_float(r.get("Valor Restos A Pagar Pagos", "")),
+            **FONTE,
+        })
+
+        if cod_aut:
+            autoriais.append({"codigo_emenda": cod_e, "codigo_autor": cod_aut})
+
+        if cod_ibge:
+            dest_mun.append({"codigo_emenda": cod_e, "codigo_ibge": cod_ibge})
+        elif uf:
+            dest_est.append({"codigo_emenda": cod_e, "uf": uf})
+
+        if cod_f:
+            dest_funcao.append({"codigo_emenda": cod_e, "codigo_funcao": cod_f})
+
+    return {
+        "parlamentares": list(parlamentares.values()),
+        "funcoes":       list(funcoes.values()),
+        "programas":     list(programas.values()),
+        "emendas":       emendas,
+        "autoriais":     autoriais,
+        "dest_mun":      dest_mun,
+        "dest_est":      dest_est,
+        "dest_funcao":   dest_funcao,
+    }
+
+
+def _t_convenios(chunk: list[dict]) -> list[dict]:
+    rows = []
+    for r in chunk:
+        cod_e = r.get("Código da Emenda", "").strip()
+        num_c = r.get("Número Convênio", r.get("Número do Convênio", "")).strip()
+        if not cod_e or not num_c:
+            continue
+        rows.append({
+            "codigo_emenda":   cod_e,
+            "numero_convenio": num_c,
+            "objeto":          r.get("Objeto Convênio", r.get("Objeto do Convênio", "")).strip(),
+            "valor_emenda":    _safe_float(r.get("Valor Repassado", r.get("Valor", "0"))),
+            "situacao":        r.get("Situação", "").strip(),
+            **FONTE,
+        })
+    return rows
+
+
+def _t_despesas(chunk: list[dict]) -> list[dict]:
+    rows = []
+    for r in chunk:
+        cod_e = r.get("Código da Emenda", "").strip()
+        if not cod_e:
+            continue
+        # chave composta: emenda + favorecido + fase
+        cnpj  = "".join(c for c in r.get("CNPJ Favorecido", r.get("CNPJ do Favorecido", "")) if c.isdigit())
+        cod_d = f"{cod_e}_{cnpj or r.get('Nome Favorecido', '')[:20]}"
+        rows.append({
+            "codigo_emenda":   cod_e,
+            "codigo_despesa":  cod_d,
+            "valor_empenhado": _safe_float(r.get("Valor Empenhado", "0")),
+            "valor_liquidado": _safe_float(r.get("Valor Liquidado", "0")),
+            "valor_pago":      _safe_float(r.get("Valor Pago", "0")),
+            "nome_favorecido": r.get("Nome Favorecido", "").strip(),
+            "cnpj_favorecido": cnpj[:8] if len(cnpj) >= 8 else "",
+            **FONTE,
+        })
+    return rows
+
+
+# ── Loaders ───────────────────────────────────────────────────────────────────
+
+def _load_emendas(driver) -> None:
+    path = DATA_DIR / "emendas.csv"
+    parl_t = func_t = prog_t = em_t = 0
+
+    with driver.session() as session:
+        for chunk in _iter_csv(path):
+            t = _t_emendas(chunk)
+            if t["parlamentares"]:
+                _run_batches(session, Q_PARLAMENTAR, t["parlamentares"])
+                parl_t += len(t["parlamentares"])
+            if t["funcoes"]:
+                _run_batches(session, Q_FUNCAO, t["funcoes"])
+                func_t += len(t["funcoes"])
+            if t["programas"]:
+                _run_batches(session, Q_PROGRAMA, t["programas"])
+                prog_t += len(t["programas"])
+            if t["emendas"]:
+                _run_batches(session, Q_EMENDA, t["emendas"])
+                em_t += len(t["emendas"])
+            if t["autoriais"]:
+                _run_batches(session, Q_AUTORIA, t["autoriais"])
+            if t["dest_mun"]:
+                _run_batches(session, Q_EMENDA_MUNICIPIO, t["dest_mun"])
+            if t["dest_est"]:
+                _run_batches(session, Q_EMENDA_ESTADO, t["dest_est"])
+            if t["dest_funcao"]:
+                _run_batches(session, Q_EMENDA_FUNCAO, t["dest_funcao"])
+
+    log.info(f"    ✓ emendas={em_t:,}  parlamentares={parl_t:,}  funções={func_t:,}")
+
+
+def _load_convenios(driver) -> None:
+    path = DATA_DIR / "convenios.csv"
+    total = 0
+    with driver.session() as session:
+        for chunk in _iter_csv(path):
+            rows = _t_convenios(chunk)
+            if rows:
+                _run_batches(session, Q_CONVENIO, rows)
+                total += len(rows)
+    log.info(f"    ✓ convênios={total:,}")
+
+
+def _load_despesas(driver) -> None:
+    path = DATA_DIR / "despesas.csv"
+    total = 0
+    with driver.session() as session:
+        for chunk in _iter_csv(path):
+            rows = _t_despesas(chunk)
+            if rows:
+                _run_batches(session, Q_DESPESA, rows)
+                total += len(rows)
+    log.info(f"    ✓ despesas={total:,}")
+
+
+# ── Entry-point ───────────────────────────────────────────────────────────────
+
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+    log.info(f"[emendas_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
+
+    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+
+    with driver.session() as session:
+        log.info("  Constraints e índices...")
+        for q in Q_CONSTRAINTS + Q_INDEXES:
+            session.run(q)
+
+    log.info("  [1/4] Emendas, parlamentares, funções...")
+    _load_emendas(driver)
+
+    log.info("  [2/4] Convênios...")
+    _load_convenios(driver)
+
+    log.info("  [3/4] Despesas...")
+    _load_despesas(driver)
+
+    log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
+    with driver.session() as session:
+        session.run(Q_LINK_PARLAMENTAR_PESSOA)
+    log.info("    ✓ link parlamentar-pessoa concluído")
+
+    driver.close()
+    log.info("[emendas_cgu] Pipeline concluído")
