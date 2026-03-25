@@ -19,17 +19,16 @@ Relacionamentos:
 import csv
 import logging
 import os
-from datetime import datetime
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
 
 log = logging.getLogger(__name__)
 
-DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tse"
-CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "20000"))
-BATCH        = int(os.environ.get("NEO4J_BATCH", "500"))
-SNAPSHOT_FMT = "%Y"
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tse"
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE",  "20000"))
+BATCH      = int(os.environ.get("NEO4J_BATCH", "500"))
 
 FONTE = {
     "fonte_nome": "TSE — Tribunal Superior Eleitoral",
@@ -45,59 +44,6 @@ CARGOS_ESTADUAIS  = {"GOVERNADOR", "VICE-GOVERNADOR", "SENADOR",
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _iter_csv(path: Path):
-    if not path.exists():
-        log.warning(f"  CSV ausente: {path.name}")
-        return
-    total = 0
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        chunk  = []
-        for row in reader:
-            chunk.append(row)
-            if len(chunk) >= CHUNK_SIZE:
-                yield chunk
-                total += len(chunk)
-                chunk = []
-        if chunk:
-            total += len(chunk)
-            yield chunk
-    log.info(f"    {path.name}: {total:,} linhas")
-
-
-def _run_batches(session, query: str, rows: list[dict], **kw) -> None:
-    import time
-    from neo4j.exceptions import TransientError
-    for i in range(0, len(rows), BATCH):
-        batch = rows[i : i + BATCH]
-        for attempt in range(1, 6):
-            try:
-                session.run(query, rows=batch, **kw)
-                break
-            except TransientError as exc:
-                if "Deadlock" in str(exc) and attempt < 5:
-                    time.sleep(attempt * 0.5)
-                else:
-                    raise
-
-
-def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
-    import time
-    from neo4j.exceptions import ServiceUnavailable
-    driver = GraphDatabase.driver(uri, auth=(user, password),
-                                  max_connection_pool_size=6)
-    for attempt in range(1, retries + 1):
-        try:
-            with driver.session() as s:
-                s.run("RETURN 1")
-            log.info(f"  Neo4j pronto (tentativa {attempt})")
-            return driver
-        except ServiceUnavailable:
-            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
-            time.sleep(delay)
-    raise RuntimeError("Neo4j não ficou disponível")
-
 
 # ── Constraints e índices ─────────────────────────────────────────────────────
 
@@ -223,6 +169,16 @@ SET d.valor = toFloat(r.valor),
     d.ano   = toInteger(r.ano),
     d.sq_candidato = r.sq_candidato,
     d.fonte_nome   = r.fonte_nome
+"""
+
+Q_LINK_MUNICIPIO_TSE_IBGE = """
+MATCH (m:Municipio)
+WHERE m.codigo_tse IS NOT NULL AND (m.id IS NULL OR m.ibge_linked IS NULL)
+WITH m, toUpper(trim(m.nome)) AS nome_upper
+MATCH (ibge:Municipio)
+WHERE ibge.id IS NOT NULL AND toUpper(trim(ibge.nome)) = nome_upper
+  AND ibge.codigo_tse IS NULL
+SET m.id = ibge.id, m.ibge_linked = true
 """
 
 
@@ -372,13 +328,32 @@ def _t_doacoes(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
     return pf_rows, pj_rows
 
 
+
+Q_LINK_DOACAO_CANDIDATO = """
+MATCH (rel)-[d:DOOU_PARA]->(fake:Pessoa)
+WHERE fake.cpf STARTS WITH 'SQ_'
+WITH rel, d, fake, replace(fake.cpf, 'SQ_', '') AS sq
+MATCH (cand:Pessoa)-[c:CANDIDATO_EM]->()
+WHERE c.sq_candidato = sq
+WITH rel, d, fake, cand
+CALL {
+  WITH rel, d, fake, cand
+  MERGE (rel)-[d2:DOOU_PARA]->(cand)
+  SET d2 = d
+  DELETE d
+  WITH fake
+  WHERE NOT (fake)--()
+  DELETE fake
+}
+"""
+
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
 def _load_candidatos(driver, data_dir: Path,
                      eleicoes: list[int] | None = None) -> None:
     todos = sorted(data_dir.glob("candidatos_*.csv"), key=lambda p: p.stem)
     if eleicoes:
-        todos = [p for p in todos if any(str(ano) in p.stem for ano in eleicoes)]
+        todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
     if not todos:
         log.warning("  Nenhum arquivo candidatos_*.csv encontrado (verifique --eleicao)")
         return
@@ -387,24 +362,24 @@ def _load_candidatos(driver, data_dir: Path,
         log.info(f"  Carregando {path.name}...")
         total = 0
         with driver.session() as session:
-            for chunk in _iter_csv(path):
+            for chunk in iter_csv(path):
                 t = _t_candidatos(chunk)
 
                 if t["partidos"]:
-                    _run_batches(session, Q_PARTIDO, t["partidos"])
+                    run_batches(session, Q_PARTIDO, t["partidos"])
                 if t["estados"]:
-                    _run_batches(session, Q_ESTADO, t["estados"])
+                    run_batches(session, Q_ESTADO, t["estados"])
                 if t["eleicoes"]:
-                    _run_batches(session, Q_ELEICAO, t["eleicoes"])
+                    run_batches(session, Q_ELEICAO, t["eleicoes"])
                 if t["el_mun"]:
-                    _run_batches(session, Q_ELEICAO_MUNICIPIO, t["el_mun"])
+                    run_batches(session, Q_ELEICAO_MUNICIPIO, t["el_mun"])
                 if t["el_est"]:
-                    _run_batches(session, Q_ELEICAO_ESTADO, t["el_est"])
+                    run_batches(session, Q_ELEICAO_ESTADO, t["el_est"])
                 if t["candidatos"]:
-                    _run_batches(session, Q_CANDIDATO, t["candidatos"])
+                    run_batches(session, Q_CANDIDATO, t["candidatos"])
                     total += len(t["candidatos"])
                 if t["filiacoes"]:
-                    _run_batches(session, Q_FILIACAO, t["filiacoes"])
+                    run_batches(session, Q_FILIACAO, t["filiacoes"])
 
         log.info(f"    ✓ {path.name}  {total:,} candidatos")
 
@@ -413,7 +388,7 @@ def _load_doacoes(driver, data_dir: Path,
                   eleicoes: list[int] | None = None) -> None:
     todos = sorted(data_dir.glob("doacoes_*.csv"))
     if eleicoes:
-        todos = [p for p in todos if any(str(ano) in p.stem for ano in eleicoes)]
+        todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
     if not todos:
         log.warning("  Nenhum arquivo doacoes_*.csv encontrado (verifique --eleicao)")
         return
@@ -422,13 +397,13 @@ def _load_doacoes(driver, data_dir: Path,
         log.info(f"  Carregando {path.name}...")
         pf_t = pj_t = 0
         with driver.session() as session:
-            for chunk in _iter_csv(path):
+            for chunk in iter_csv(path):
                 pf, pj = _t_doacoes(chunk)
                 if pf:
-                    _run_batches(session, Q_DOACAO_PF, pf)
+                    run_batches(session, Q_DOACAO_PF, pf)
                     pf_t += len(pf)
                 if pj:
-                    _run_batches(session, Q_DOACAO_PJ, pj)
+                    run_batches(session, Q_DOACAO_PJ, pj)
                     pj_t += len(pj)
         log.info(f"    ✓ {path.name}  PF={pf_t:,}  PJ={pj_t:,}")
 
@@ -446,7 +421,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         + (f"  eleicoes={eleicoes}" if eleicoes else "  eleicoes=todas")
     )
 
-    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
@@ -463,6 +438,11 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
     _load_doacoes(driver, doac_dir, eleicoes)
 
     # liga municípios TSE → nós canônicos IBGE pelo nome
+    log.info("  Linkando doações → candidatos reais...")
+    with driver.session() as session:
+        session.run(Q_LINK_DOACAO_CANDIDATO)
+    log.info("  ✓ doações linkadas")
+
     log.info("  Linkando municípios TSE → IBGE...")
     with driver.session() as session:
         session.run(Q_LINK_MUNICIPIO_TSE_IBGE)

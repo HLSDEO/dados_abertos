@@ -24,6 +24,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
 
 log = logging.getLogger(__name__)
 
@@ -134,61 +135,31 @@ MERGE (s)-[:TEM_REMUNERACAO]->(rem)
 """
 
 
+
+Q_EXERCE_EM = """
+UNWIND $rows AS r
+MATCH (s:Servidor {id_servidor: r.id_servidor})
+WHERE r.org_exercicio <> "" AND r.org_exercicio <> r.org_lotacao
+MATCH (u:UnidadeGestora)
+WHERE u.no_uasg = r.org_exercicio OR u.sg_uasg = r.org_exercicio
+MERGE (s)-[:EXERCE_EM]->(u)
+"""
+
+Q_SERVIDOR_MUNICIPIO_FIXED = """
+UNWIND $rows AS r
+MATCH (s:Servidor {id_servidor: r.id_servidor})
+WHERE r.municipio_exercicio <> ""
+MATCH (m:Municipio)
+WHERE toUpper(trim(m.nome)) = toUpper(trim(r.municipio_exercicio))
+  AND (r.uf_exercicio = "" OR m.uf = r.uf_exercicio
+       OR EXISTS { MATCH (m)-[:PERTENCE_A*]->(:Estado {sigla: r.uf_exercicio}) })
+WITH s, m
+ORDER BY m.id IS NOT NULL DESC
+LIMIT 1
+MERGE (s)-[:LOCALIZADO_EM]->(m)
+"""
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _iter_csv(path: Path):
-    if not path.exists():
-        return
-    total = 0
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        chunk  = []
-        for row in reader:
-            row = {k: (v or "").strip() for k, v in row.items() if k is not None}
-            chunk.append(row)
-            if len(chunk) >= CHUNK_SIZE:
-                yield chunk
-                total += len(chunk)
-                chunk  = []
-        if chunk:
-            total += len(chunk)
-            yield chunk
-    log.info(f"    {path.name}: {total:,} linhas")
-
-
-def _run_batches(session, query: str, rows: list[dict],
-                 retries: int = 5) -> None:
-    import time
-    from neo4j.exceptions import TransientError
-    for i in range(0, len(rows), BATCH):
-        batch = rows[i : i + BATCH]
-        for attempt in range(1, retries + 1):
-            try:
-                with session.begin_transaction() as tx:
-                    tx.run(query, rows=batch)
-                    tx.commit()
-                break
-            except TransientError as exc:
-                if "DeadlockDetected" in str(exc) and attempt < retries:
-                    import time as t; t.sleep(attempt * 0.5)
-                else:
-                    raise
-
-
-def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
-    import time
-    from neo4j.exceptions import ServiceUnavailable
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    for attempt in range(1, retries + 1):
-        try:
-            with driver.session() as s:
-                s.run("RETURN 1")
-            return driver
-        except ServiceUnavailable:
-            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
-            time.sleep(delay)
-    raise RuntimeError("Neo4j não disponível")
-
 
 def _safe_float(s: str) -> str:
     try:
@@ -224,8 +195,8 @@ def _load_cadastro(driver, path: Path) -> int:
     rows_mun  = []
 
     with driver.session() as session:
-        for chunk in _iter_csv(path):
-            _run_batches(session, Q_SERVIDOR, chunk)
+        for chunk in iter_csv(path):
+            run_batches(session, Q_SERVIDOR, chunk)
 
             # filtra para vínculos
             for r in chunk:
@@ -243,14 +214,14 @@ def _load_cadastro(driver, path: Path) -> int:
             com_cpf = [r for r in chunk
                        if r.get("cpf") and "***" not in r.get("cpf","")]
             if com_cpf:
-                _run_batches(session, Q_SERVIDOR_PESSOA, com_cpf)
+                run_batches(session, Q_SERVIDOR_PESSOA, com_cpf)
 
             total += len(chunk)
 
         if rows_uasg:
-            _run_batches(session, Q_SERVIDOR_UASG, rows_uasg)
+            run_batches(session, Q_SERVIDOR_UASG, rows_uasg)
         if rows_mun:
-            _run_batches(session, Q_SERVIDOR_MUNICIPIO, rows_mun)
+            run_batches(session, Q_SERVIDOR_MUNICIPIO, rows_mun)
 
     return total
 
@@ -258,15 +229,15 @@ def _load_cadastro(driver, path: Path) -> int:
 def _load_remuneracao(driver, path: Path) -> int:
     total = 0
     with driver.session() as session:
-        for chunk in _iter_csv(path):
+        for chunk in iter_csv(path):
             # cria chave composta única
             for r in chunk:
-                r["remuneracao_id"] = f"{r.get('id_servidor','')}_{r.get('ano','')}_{r.get('mes','')}"
+                r["remuneracao_id"] = f"{r.get('id_servidor','')}_{r.get('fonte_categoria','')}_{r.get('ano','')}_{r.get('mes','')}"
                 for col in ("remuneracao_bruta", "remuneracao_liquida", "total_bruto",
                             "irrf", "pss_rpps", "abate_teto", "gratificacao_natalina",
                             "ferias", "verbas_indenizatorias", "outras_verbas"):
                     r[col] = _safe_float(r.get(col, "0"))
-            _run_batches(session, Q_REMUNERACAO, chunk)
+            run_batches(session, Q_REMUNERACAO, chunk)
             total += len(chunk)
     return total
 
@@ -298,7 +269,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
 
     log.info(f"  Períodos a processar: {len(periodos)}  {periodos[:5]}{'...' if len(periodos)>5 else ''}")
 
-    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")

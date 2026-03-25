@@ -28,6 +28,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
 
 log = logging.getLogger(__name__)
 
@@ -170,65 +171,6 @@ MERGE (par)-[:MESMO_QUE]->(p)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _iter_csv(path: Path):
-    if not path.exists():
-        log.warning(f"  {path.name} não encontrado — pulando")
-        return
-    total = 0
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f, delimiter=";")
-        # tenta detectar separador correto
-        if reader.fieldnames and len(reader.fieldnames) == 1:
-            f.seek(0)
-            reader = csv.DictReader(f, delimiter=",")
-        chunk = []
-        for row in reader:
-            row = {k: (v or "").strip() for k, v in row.items() if k is not None}
-            chunk.append(row)
-            if len(chunk) >= CHUNK_SIZE:
-                yield chunk
-                total += len(chunk)
-                chunk = []
-        if chunk:
-            total += len(chunk)
-            yield chunk
-    log.info(f"    {path.name}: {total:,} linhas")
-
-
-def _run_batches(session, query: str, rows: list[dict],
-                 retries: int = 5) -> None:
-    import time
-    from neo4j.exceptions import TransientError
-    for i in range(0, len(rows), BATCH):
-        batch = rows[i : i + BATCH]
-        for attempt in range(1, retries + 1):
-            try:
-                with session.begin_transaction() as tx:
-                    tx.run(query, rows=batch)
-                    tx.commit()
-                break
-            except TransientError as exc:
-                if "DeadlockDetected" in str(exc) and attempt < retries:
-                    import time as t; t.sleep(attempt * 0.5)
-                else:
-                    raise
-
-
-def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
-    import time
-    from neo4j.exceptions import ServiceUnavailable
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    for attempt in range(1, retries + 1):
-        try:
-            with driver.session() as s:
-                s.run("RETURN 1")
-            return driver
-        except ServiceUnavailable:
-            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
-            time.sleep(delay)
-    raise RuntimeError("Neo4j não disponível")
-
-
 def _safe_float(s: str) -> str:
     s = (s or "").strip()
     if not s:
@@ -239,6 +181,14 @@ def _safe_float(s: str) -> str:
     except ValueError:
         return "0"
 
+
+
+Q_EMENDA_PROGRAMA = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+MATCH (p:Programa {codigo_programa: r.codigo_programa})
+MERGE (e)-[:CLASSIFICADA_EM_PROGRAMA]->(p)
+"""
 
 # ── Transforms ────────────────────────────────────────────────────────────────
 
@@ -352,7 +302,7 @@ def _t_despesas(chunk: list[dict]) -> list[dict]:
             "valor_liquidado": _safe_float(r.get("Valor Liquidado", "0")),
             "valor_pago":      _safe_float(r.get("Valor Pago", "0")),
             "nome_favorecido": r.get("Nome Favorecido", "").strip(),
-            "cnpj_favorecido": cnpj[:8] if len(cnpj) >= 8 else "",
+            "cnpj_favorecido": cnpj[:8].zfill(8) if len(cnpj) >= 8 else "",
             **FONTE,
         })
     return rows
@@ -365,28 +315,28 @@ def _load_emendas(driver) -> None:
     parl_t = func_t = prog_t = em_t = 0
 
     with driver.session() as session:
-        for chunk in _iter_csv(path):
+        for chunk in iter_csv(path):
             t = _t_emendas(chunk)
             if t["parlamentares"]:
-                _run_batches(session, Q_PARLAMENTAR, t["parlamentares"])
+                run_batches(session, Q_PARLAMENTAR, t["parlamentares"])
                 parl_t += len(t["parlamentares"])
             if t["funcoes"]:
-                _run_batches(session, Q_FUNCAO, t["funcoes"])
+                run_batches(session, Q_FUNCAO, t["funcoes"])
                 func_t += len(t["funcoes"])
             if t["programas"]:
-                _run_batches(session, Q_PROGRAMA, t["programas"])
+                run_batches(session, Q_PROGRAMA, t["programas"])
                 prog_t += len(t["programas"])
             if t["emendas"]:
-                _run_batches(session, Q_EMENDA, t["emendas"])
+                run_batches(session, Q_EMENDA, t["emendas"])
                 em_t += len(t["emendas"])
             if t["autoriais"]:
-                _run_batches(session, Q_AUTORIA, t["autoriais"])
+                run_batches(session, Q_AUTORIA, t["autoriais"])
             if t["dest_mun"]:
-                _run_batches(session, Q_EMENDA_MUNICIPIO, t["dest_mun"])
+                run_batches(session, Q_EMENDA_MUNICIPIO, t["dest_mun"])
             if t["dest_est"]:
-                _run_batches(session, Q_EMENDA_ESTADO, t["dest_est"])
+                run_batches(session, Q_EMENDA_ESTADO, t["dest_est"])
             if t["dest_funcao"]:
-                _run_batches(session, Q_EMENDA_FUNCAO, t["dest_funcao"])
+                run_batches(session, Q_EMENDA_FUNCAO, t["dest_funcao"])
 
     log.info(f"    ✓ emendas={em_t:,}  parlamentares={parl_t:,}  funções={func_t:,}")
 
@@ -395,10 +345,10 @@ def _load_convenios(driver) -> None:
     path = DATA_DIR / "convenios.csv"
     total = 0
     with driver.session() as session:
-        for chunk in _iter_csv(path):
+        for chunk in iter_csv(path):
             rows = _t_convenios(chunk)
             if rows:
-                _run_batches(session, Q_CONVENIO, rows)
+                run_batches(session, Q_CONVENIO, rows)
                 total += len(rows)
     log.info(f"    ✓ convênios={total:,}")
 
@@ -410,10 +360,10 @@ def _load_por_favorecido(driver) -> None:
         path = DATA_DIR / "despesas.csv"
     total = 0
     with driver.session() as session:
-        for chunk in _iter_csv(path):
+        for chunk in iter_csv(path):
             rows = _t_despesas(chunk)
             if rows:
-                _run_batches(session, Q_DESPESA, rows)
+                run_batches(session, Q_DESPESA, rows)
                 total += len(rows)
     log.info(f"    ✓ por_favorecido={total:,}")
 
@@ -423,7 +373,7 @@ def _load_por_favorecido(driver) -> None:
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(f"[emendas_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
-    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")

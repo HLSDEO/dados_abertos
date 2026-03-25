@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import wait_for_neo4j, run_batches
 
 log = logging.getLogger(__name__)
 
@@ -134,59 +135,35 @@ MERGE (u)-[:LOCALIZADO_EM]->(m)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _run_batches(session, query: str, rows: list[dict],
-                 retries: int = 5, batch_override: int | None = None) -> None:
-    import time
-    from neo4j.exceptions import TransientError
-    size = batch_override or BATCH
-    for i in range(0, len(rows), size):
-        batch = rows[i : i + size]
-        for attempt in range(1, retries + 1):
-            try:
-                with session.begin_transaction() as tx:
-                    tx.run(query, rows=batch)
-                    tx.commit()
-                break
-            except TransientError as exc:
-                if "DeadlockDetected" in str(exc) and attempt < retries:
-                    wait = attempt * 0.5
-                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait}s")
-                    time.sleep(wait)
-                else:
-                    raise
+# Mapa UF → nome normalizado (para resolver sigla_estado nos órgãos estaduais)
+_UF_MAP = {
+    "ACRE": "AC", "ALAGOAS": "AL", "AMAPA": "AP", "AMAZONAS": "AM",
+    "BAHIA": "BA", "CEARA": "CE", "DISTRITO FEDERAL": "DF",
+    "ESPIRITO SANTO": "ES", "GOIAS": "GO", "MARANHAO": "MA",
+    "MATO GROSSO": "MT", "MATO GROSSO DO SUL": "MS", "MINAS GERAIS": "MG",
+    "PARA": "PA", "PARAIBA": "PB", "PARANA": "PR", "PERNAMBUCO": "PE",
+    "PIAUI": "PI", "RIO DE JANEIRO": "RJ", "RIO GRANDE DO NORTE": "RN",
+    "RIO GRANDE DO SUL": "RS", "RONDONIA": "RO", "RORAIMA": "RR",
+    "SANTA CATARINA": "SC", "SAO PAULO": "SP", "SERGIPE": "SE",
+    "TOCANTINS": "TO",
+}
 
 
-def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
-    import time
-    from neo4j.exceptions import ServiceUnavailable
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    for attempt in range(1, retries + 1):
-        try:
-            with driver.session() as s:
-                s.run("RETURN 1")
-            return driver
-        except ServiceUnavailable:
-            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
-            time.sleep(delay)
-    raise RuntimeError("Neo4j não disponível")
-
-
-def _extract_estado(no_orgao: str, no_esfera: str) -> str:
+def _extract_estado(no_orgao: str, no_esfera: str) -> tuple[str, str]:
     """
-    Extrai o nome do estado a partir de NO_ORGAO quando esfera = ESTADUAL.
-    Ex: "ESTADO DE GOIAS" → "GOIAS"
-        "ESTADO DE SAO PAULO" → "SAO PAULO"
+    Extrai (nome_estado, sigla_uf) de NO_ORGAO quando esfera = ESTADUAL.
+    Retorna ("", "") quando não reconhecido.
     """
     if no_esfera != "ESTADUAL":
-        return ""
+        return "", ""
     s = no_orgao.strip().upper()
-    if s.startswith("ESTADO DE "):
-        return s[len("ESTADO DE "):]
-    if s.startswith("ESTADO DO "):
-        return s[len("ESTADO DO "):]
-    if s.startswith("ESTADO DA "):
-        return s[len("ESTADO DA "):]
-    return s
+    for prefix in ("ESTADO DE ", "ESTADO DO ", "ESTADO DA ", "GOVERNO DO ESTADO DE ",
+                   "GOVERNO DO ESTADO DO ", "GOVERNO DO ESTADO DA ", "ESTADO "):
+        if s.startswith(prefix):
+            nome = s[len(prefix):]
+            return nome, _UF_MAP.get(nome, "")
+    # fallback: tenta o nome inteiro
+    return s, _UF_MAP.get(s, "")
 
 
 def _extract_municipio(no_uasg: str, no_esfera: str) -> str:
@@ -255,8 +232,9 @@ def _read_xlsx(path: Path) -> list[dict]:
         esfera_norm = _normalize_esfera(row.get("no_esfera", ""))
         row.update(esfera_norm)
         # extrai nome de estado (para órgãos estaduais)
-        row["nome_estado"]    = _extract_estado(row.get("no_orgao", ""), row["no_esfera"])
-        row["sigla_estado"]   = ""   # preenchido só se vier no formato "ESTADO DE XX"
+        nome_est, sigla_est = _extract_estado(row.get("no_orgao", ""), row["no_esfera"])
+        row["nome_estado"]  = nome_est
+        row["sigla_estado"] = sigla_est
         # extrai nome de município (para UASGs municipais)
         row["nome_municipio"] = _extract_municipio(row.get("no_uasg", ""), row["no_esfera"])
 
@@ -282,7 +260,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     if not rows:
         return
 
-    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
@@ -292,17 +270,17 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     # ordem: Esfera → Orgao → UnidadeGestora → vínculos geográficos
     log.info("  [1/5] Esferas administrativas...")
     with driver.session() as session:
-        _run_batches(session, Q_ESFERA, rows)
+        run_batches(session, Q_ESFERA, rows)
     log.info(f"    ✓ {len(set(r.get('id_esfera','') for r in rows))} esferas")
 
     log.info("  [2/5] Órgãos...")
     with driver.session() as session:
-        _run_batches(session, Q_ORGAO, rows)
+        run_batches(session, Q_ORGAO, rows)
     log.info(f"    ✓ {len(set(r.get('id_orgao','') for r in rows))} órgãos")
 
     log.info("  [3/5] Unidades gestoras...")
     with driver.session() as session:
-        _run_batches(session, Q_UASG, rows)
+        run_batches(session, Q_UASG, rows)
     log.info(f"    ✓ {len(rows):,} unidades gestoras")
 
     # vínculos geográficos — só para linhas com nome extraído
@@ -310,7 +288,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     if rows_estaduais:
         log.info(f"  [4/5] Vinculando {len(rows_estaduais):,} órgãos → :Estado...")
         with driver.session() as session:
-            _run_batches(session, Q_ORGAO_ESTADO, rows_estaduais)
+            run_batches(session, Q_ORGAO_ESTADO, rows_estaduais)
     else:
         log.info("  [4/5] Nenhum órgão estadual para vincular")
 
@@ -319,7 +297,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
         log.info(f"  [5/5] Vinculando {len(rows_municipais):,} UASGs → :Municipio...")
         # batch menor para evitar deadlock — muitas UASGs apontam para o mesmo :Municipio
         with driver.session() as session:
-            _run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
+            run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
                          batch_override=100)
     else:
         log.info("  [5/5] Nenhuma UASG municipal para vincular")

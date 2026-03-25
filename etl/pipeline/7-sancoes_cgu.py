@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ SET s.cpf_cnpj         = r.cpf_cnpj,
     s.data_fim         = r.data_fim,
     s.fundamentacao    = r.fundamentacao,
     s.numero_processo  = r.numero_processo,
-    s.valor_multa      = r.valor_multa,
+    s.valor_multa      = CASE r.valor_multa WHEN '' THEN null ELSE toFloat(replace(replace(r.valor_multa,'.',''),',','.')) END,
     s.fonte_nome       = r.fonte_nome,
     s.fonte_url        = r.fonte_url
 """
@@ -107,70 +108,18 @@ MERGE (p)-[:POSSUI_SANCAO]->(s)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _iter_csv(path: Path):
-    if not path.exists():
-        log.warning(f"  {path.name} não encontrado — pulando")
-        return
-    total = 0
-    with open(path, encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        chunk  = []
-        for row in reader:
-            row = {k: (v or "").strip() for k, v in row.items() if k is not None}
-            chunk.append(row)
-            if len(chunk) >= CHUNK_SIZE:
-                yield chunk
-                total += len(chunk)
-                chunk  = []
-        if chunk:
-            total += len(chunk)
-            yield chunk
-    log.info(f"    {path.name}: {total:,} linhas")
-
-
-def _run_batches(session, query: str, rows: list[dict],
-                 retries: int = 5) -> None:
-    import time
-    from neo4j.exceptions import TransientError
-    for i in range(0, len(rows), BATCH):
-        batch = rows[i : i + BATCH]
-        for attempt in range(1, retries + 1):
-            try:
-                with session.begin_transaction() as tx:
-                    tx.run(query, rows=batch)
-                    tx.commit()
-                break
-            except TransientError as exc:
-                if "DeadlockDetected" in str(exc) and attempt < retries:
-                    import time as t; t.sleep(attempt * 0.5)
-                else:
-                    raise
-
-
-def _wait_for_neo4j(uri, user, password, retries=20, delay=5.0):
-    import time
-    from neo4j.exceptions import ServiceUnavailable
-    driver = GraphDatabase.driver(uri, auth=(user, password))
-    for attempt in range(1, retries + 1):
-        try:
-            with driver.session() as s:
-                s.run("RETURN 1")
-            return driver
-        except ServiceUnavailable:
-            log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
-            time.sleep(delay)
-    raise RuntimeError("Neo4j não disponível")
-
-
 def _strip_doc(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
 
 
 def _is_cnpj(digits: str) -> bool:
-    return len(digits) == 14
+    """CNPJ tem 14 dígitos e não pode ser todos iguais."""
+    return len(digits) == 14 and not all(c == digits[0] for c in digits)
+
 
 def _is_cpf(digits: str) -> bool:
-    return len(digits) == 11
+    """CPF tem 11 dígitos e não pode ser todos iguais."""
+    return len(digits) == 11 and not all(c == digits[0] for c in digits)
 
 
 # ── Transform ─────────────────────────────────────────────────────────────────
@@ -192,7 +141,10 @@ def _t_sancoes(chunk: list[dict], tipo_registro: str) -> dict:
             continue
 
         # chave única: doc + tipo_registro + data_inicio
-        sancao_id = f"{digits or nome[:20]}_{tipo_registro}_{inicio}"
+        # chave robusta: usa documento quando disponível, senão hash do nome
+        import hashlib as _hl
+        doc_key = digits if digits else _hl.md5(nome.encode()).hexdigest()[:16]
+        sancao_id = f"{doc_key}_{tipo_registro}_{inicio}"
 
         orgao = r.get("orgao_sancionador", "").strip()
         if orgao and orgao not in orgaos:
@@ -250,21 +202,21 @@ def _load_dataset(driver, path: Path, tipo_registro: str) -> None:
     total_s = total_e = total_p = 0
 
     with driver.session() as session:
-        for chunk in _iter_csv(path):
+        for chunk in iter_csv(path):
             t = _t_sancoes(chunk, tipo_registro)
 
             if t["orgaos"]:
-                _run_batches(session, Q_ORGAO_SANCIONADOR, t["orgaos"])
+                run_batches(session, Q_ORGAO_SANCIONADOR, t["orgaos"])
             if t["sancoes"]:
-                _run_batches(session, Q_SANCAO, t["sancoes"])
+                run_batches(session, Q_SANCAO, t["sancoes"])
                 total_s += len(t["sancoes"])
             if t["com_orgao"]:
-                _run_batches(session, Q_SANCAO_ORGAO, t["com_orgao"])
+                run_batches(session, Q_SANCAO_ORGAO, t["com_orgao"])
             if t["empresas"]:
-                _run_batches(session, Q_EMPRESA_SANCAO, t["empresas"])
+                run_batches(session, Q_EMPRESA_SANCAO, t["empresas"])
                 total_e += len(t["empresas"])
             if t["pessoas"]:
-                _run_batches(session, Q_PESSOA_SANCAO, t["pessoas"])
+                run_batches(session, Q_PESSOA_SANCAO, t["pessoas"])
                 total_p += len(t["pessoas"])
 
     log.info(f"    ✓ {tipo_registro}: sanções={total_s:,}  empresas={total_e:,}  pessoas={total_p:,}")
@@ -275,7 +227,7 @@ def _load_dataset(driver, path: Path, tipo_registro: str) -> None:
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(f"[sancoes_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
-    driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
