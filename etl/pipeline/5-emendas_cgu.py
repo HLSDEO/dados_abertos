@@ -282,7 +282,7 @@ def _t_emendas(chunk: list[dict]) -> dict:
         emendas.append({
             "codigo_emenda":     cod_e,
             "ano_emenda":        r.get("Ano da Emenda", "").strip(),
-            "tipo_emenda":       r.get("Tipo da Emenda", "").strip(),
+            "tipo_emenda":       r.get("Tipo de Emenda", r.get("Tipo da Emenda", "")).strip(),
             "numero_emenda":     r.get("Número da Emenda", "").strip(),
             "localidade_gasto":  r.get("Localidade do Gasto", "").strip(),
             "regiao":            r.get("Região", "").strip(),
@@ -403,8 +403,11 @@ def _load_convenios(driver) -> None:
     log.info(f"    ✓ convênios={total:,}")
 
 
-def _load_despesas(driver) -> None:
-    path = DATA_DIR / "despesas.csv"
+def _load_por_favorecido(driver) -> None:
+    path = DATA_DIR / "por_favorecido.csv"
+    if not path.exists():
+        # fallback: tentou baixar como despesas.csv antes da correção
+        path = DATA_DIR / "despesas.csv"
     total = 0
     with driver.session() as session:
         for chunk in _iter_csv(path):
@@ -412,7 +415,7 @@ def _load_despesas(driver) -> None:
             if rows:
                 _run_batches(session, Q_DESPESA, rows)
                 total += len(rows)
-    log.info(f"    ✓ despesas={total:,}")
+    log.info(f"    ✓ por_favorecido={total:,}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
@@ -433,8 +436,8 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info("  [2/4] Convênios...")
     _load_convenios(driver)
 
-    log.info("  [3/4] Despesas...")
-    _load_despesas(driver)
+    log.info("  [3/4] Por favorecido...")
+    _load_por_favorecido(driver)
 
     log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
     with driver.session() as session:

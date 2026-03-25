@@ -42,11 +42,14 @@ FONTE = {
 }
 
 # Mapeamento arquivo no ZIP → nome de saída
-# Os nomes exatos dentro do ZIP podem variar; usamos correspondência parcial
+# Nomes reais dentro do ZIP (confirmados pelo log):
+#   EmendasParlamentares.csv
+#   EmendasParlamentares_Convenios.csv
+#   EmendasParlamentares_PorFavorecido.csv
 ARQUIVOS = {
-    "emendas":   "EmendasParlamentares",        # arquivo principal
-    "convenios": "EmendasParlamentaresConvenios",
-    "despesas":  "EmendasParlamentaresDespesas",
+    "emendas":       "EmendasParlamentares.csv",        # arquivo principal (match exato)
+    "convenios":     "EmendasParlamentares_Convenios",  # match parcial
+    "por_favorecido":"EmendasParlamentares_PorFavorecido", # match parcial
 }
 
 
@@ -117,12 +120,17 @@ COLUNAS_VALOR = {
 def _extract_csv(tmp_zip: Path, name_hint: str, out_path: Path) -> int:
     """Extrai um CSV do ZIP pelo nome parcial e salva normalizado."""
     with zipfile.ZipFile(tmp_zip) as zf:
-        members = zf.namelist()
-        target = next(
-            (m for m in members
-             if name_hint.lower() in m.lower() and m.lower().endswith(".csv")),
-            None,
-        )
+        members = [m for m in zf.namelist()
+                   if m.lower().endswith(".csv") and "__macosx" not in m.lower()]
+        # match exato primeiro (ex: "EmendasParlamentares.csv")
+        # depois parcial excluindo matches mais específicos
+        # ex: hint "EmendasParlamentares.csv" não deve pegar "EmendasParlamentares_Convenios.csv"
+        if name_hint.endswith(".csv"):
+            target = next((m for m in members if m == name_hint or
+                           m.endswith("/" + name_hint)), None)
+        else:
+            target = next((m for m in members
+                           if name_hint.lower() in m.lower()), None)
         if not target:
             log.warning(f"    '{name_hint}' não encontrado no ZIP. Disponíveis: {members}")
             return 0
