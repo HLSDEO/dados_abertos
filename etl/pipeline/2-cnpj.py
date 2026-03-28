@@ -123,13 +123,15 @@ Q_CONSTRAINTS = [
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Pessoa)    REQUIRE n.cpf IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Municipio) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Pais)      REQUIRE n.codigo IS UNIQUE",
+    # constraint em codigo_rf torna o MERGE em Q_ESTABELECIMENTO_UPDATE O(1) em vez de full scan
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Municipio) REQUIRE n.codigo_rf IS UNIQUE",
 ]
 
-# Índices extras para queries de investigação
 Q_INDEXES = [
     "CREATE INDEX empresa_razao IF NOT EXISTS FOR (e:Empresa) ON (e.razao_social)",
     "CREATE INDEX empresa_cnpj  IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
     "CREATE INDEX empresa_uf    IF NOT EXISTS FOR (e:Empresa) ON (e.uf)",
+    "CREATE INDEX empresa_sit   IF NOT EXISTS FOR (e:Empresa) ON (e.situacao_cadastral)",
     "CREATE INDEX pessoa_nome   IF NOT EXISTS FOR (p:Pessoa)  ON (p.nome)",
 ]
 
@@ -151,6 +153,8 @@ SET e.razao_social             = r.razao_social,
     e.fonte_snapshot           = r.fonte_snapshot
 """
 
+# Query unificada: SET + MERGE Municipio em uma só transação
+# Elimina metade dos round-trips (era 2 queries por chunk, agora é 1)
 Q_ESTABELECIMENTO_UPDATE = """
 UNWIND $rows AS r
 MATCH (e:Empresa {cnpj_basico: r.cnpj_basico})
@@ -167,11 +171,8 @@ SET e.cnpj                   = r.cnpj,
     e.numero                  = r.numero,
     e.bairro                  = r.bairro,
     e.email                   = r.email
-"""
-
-Q_LOCALIZADA_EM = """
-UNWIND $rows AS r
-MATCH (e:Empresa {cnpj_basico: r.cnpj_basico})
+WITH e, r
+WHERE r.municipio_cod IS NOT NULL AND r.municipio_cod <> ""
 MERGE (m:Municipio {codigo_rf: r.municipio_cod})
   ON CREATE SET m.nome       = r.municipio_nome,
                 m.fonte_nome = $fonte_nome
@@ -370,9 +371,9 @@ def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], 
 def _run_batches(session, query: str, rows: list[dict], extra_params: dict = None,
                  retries: int = 5) -> None:
     """
-    Executa query em batches com retry automático em DeadlockDetected.
-    Neo4j lança TransientError.Transaction.DeadlockDetected quando duas
-    transações concorrentes tentam adquirir o mesmo lock — é seguro retentar.
+    Executa query em batches com transação explícita e retry em DeadlockDetected.
+    begin_transaction() garante que o erro é capturado ANTES do commit,
+    permitindo retry correto (session.run() usa auto-commit — retry nunca funciona).
     """
     import time
     from neo4j.exceptions import TransientError
@@ -382,12 +383,14 @@ def _run_batches(session, query: str, rows: list[dict], extra_params: dict = Non
         batch = rows[i : i + BATCH]
         for attempt in range(1, retries + 1):
             try:
-                session.run(query, rows=batch, **params)
+                with session.begin_transaction() as tx:
+                    tx.run(query, rows=batch, **params)
+                    tx.commit()
                 break
             except TransientError as exc:
                 if "DeadlockDetected" in str(exc) and attempt < retries:
-                    wait = attempt * 0.5   # backoff: 0.5s, 1s, 1.5s, 2s
-                    log.warning(f"    Deadlock detectado — retry {attempt}/{retries} em {wait}s")
+                    wait = attempt * 0.5
+                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait}s")
                     time.sleep(wait)
                 else:
                     raise
@@ -413,18 +416,18 @@ def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
 
 def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
     path = csv_dir / "estabelecimentos.csv"
-    est_total = rel_total = 0
+    est_total = 0
+    fonte_params = {"fonte_nome": FONTE["fonte_nome"]}
     with driver.session() as session:
         for chunk in _iter_csv(path):
-            updates, rels = _t_estabelecimentos(chunk, tables)
-            _run_batches(session, Q_ESTABELECIMENTO_UPDATE, updates)
-            _run_batches(session, Q_LOCALIZADA_EM, rels,
-                         extra_params={"fonte_nome": FONTE["fonte_nome"]})
+            updates, _ = _t_estabelecimentos(chunk, tables)
+            # query unificada: SET empresa + MERGE municipio + MERGE rel em 1 round-trip
+            _run_batches(session, Q_ESTABELECIMENTO_UPDATE, updates,
+                         extra_params=fonte_params)
             est_total += len(updates)
-            rel_total += len(rels)
             if est_total % _LOG_EVERY < CHUNK_SIZE:
-                log.info(f"    [estabelecimentos] {est_total:,} linhas, {rel_total:,} rels...")
-    log.info(f"    [estabelecimentos] ✓ {est_total:,} | LOCALIZADA_EM {rel_total:,}")
+                log.info(f"    [estabelecimentos] {est_total:,} linhas...")
+    log.info(f"    [estabelecimentos] ✓ {est_total:,}")
 
 
 def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
