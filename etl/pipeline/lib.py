@@ -10,6 +10,7 @@ Centraliza funções duplicadas em todos os 7 pipelines:
 import csv
 import logging
 import os
+import random
 from pathlib import Path
 
 from neo4j import GraphDatabase
@@ -58,8 +59,9 @@ def run_batches(session, query: str, rows: list[dict],
                 break
             except TransientError as exc:
                 if "DeadlockDetected" in str(exc) and attempt < retries:
-                    wait = attempt * 0.5
-                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait}s")
+                    # jitter evita thundering herd quando múltiplas sessões retentam juntas
+                    wait = attempt * 0.5 + random.uniform(0, 0.1 * attempt)
+                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait:.2f}s")
                     time.sleep(wait)
                 else:
                     raise

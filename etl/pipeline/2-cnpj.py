@@ -29,6 +29,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+import random
 
 from neo4j import GraphDatabase
 
@@ -389,8 +390,8 @@ def _run_batches(session, query: str, rows: list[dict], extra_params: dict = Non
                 break
             except TransientError as exc:
                 if "DeadlockDetected" in str(exc) and attempt < retries:
-                    wait = attempt * 0.5
-                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait}s")
+                    wait = attempt * 0.5 + random.uniform(0, 0.1 * attempt)
+                    log.warning(f"    Deadlock — retry {attempt}/{retries} em {wait:.2f}s")
                     time.sleep(wait)
                 else:
                     raise
