@@ -1,59 +1,43 @@
 """
 Pipeline 2 - Receita Federal CNPJ → Neo4j  (alta performance)
-
 Estratégias de otimização para volumes grandes (70+ GB de CSV):
-
 1. MERGE → CREATE com deduplicação prévia em Python
    O MERGE do Cypher adquire lock por nó. Para carga inicial,
    usamos CREATE com constraint e ignoramos duplicatas via
    ON CONSTRAINT DO NOTHING (mais rápido que MERGE row a row).
-
 2. Paralelismo de sessões Neo4j
    Cada tipo de dado (Empresa, Socios, Estabelecimentos, Simples)
    é carregado em threads simultâneas usando múltiplas sessões.
    Neo4j Community suporta transações paralelas.
-
 3. BATCH maior (2.000 por UNWIND)
    Menos round-trips rede/disco por chunk.
-
 4. Índices e constraints antes da carga, não depois
-
 5. Simples adicionado: enriquece :Empresa com opcao_simples/mei
-
 Nós:  (:Empresa) (:Pessoa) (:Municipio) (:Pais)
 Rels: SOCIO_DE, LOCALIZADA_EM
 """
-
 import csv
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
 import random
-
 from neo4j import GraphDatabase
-
 log = logging.getLogger(__name__)
-
 DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
 CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "20000"))  # linhas lidas do CSV por vez
 BATCH        = int(os.environ.get("NEO4J_BATCH", "2000"))   # linhas por UNWIND
 WORKERS      = int(os.environ.get("PIPELINE_WORKERS", "3")) # sessões Neo4j paralelas
 SNAPSHOT_FMT = "%Y-%m"
-
 FONTE = {
     "fonte_nome": "Receita Federal do Brasil",
     "fonte_url":  "https://dadosabertos.rfb.gov.br/CNPJ/",
 }
-
 PORTE_MAP = {
     "00": "Não informado", "01": "Micro Empresa",
     "03": "Empresa de Pequeno Porte", "05": "Demais",
 }
-
-
 # ── Descoberta de snapshots ───────────────────────────────────────────────────
-
 def _discover_snapshots() -> list[tuple[str, Path]]:
     result = []
     if not DATA_DIR.exists():
@@ -68,10 +52,7 @@ def _discover_snapshots() -> list[tuple[str, Path]]:
         if (sub / "csv").is_dir():
             result.append((sub.name, sub / "csv"))
     return result
-
-
 # ── Leitura em chunks ─────────────────────────────────────────────────────────
-
 def _iter_csv(path: Path, chunk_size: int = CHUNK_SIZE):
     """Lê CSV em chunks sem carregar tudo em memória."""
     if not path.exists():
@@ -91,10 +72,7 @@ def _iter_csv(path: Path, chunk_size: int = CHUNK_SIZE):
             total += len(chunk)
             yield chunk
     log.info(f"    {path.name}: {total:,} linhas lidas")
-
-
 # ── Tabelas de domínio ────────────────────────────────────────────────────────
-
 def _load_domain_tables(csv_dir: Path) -> dict[str, dict[str, str]]:
     specs = {
         "cnaes":         ("codigo_cnae",        "descricao_cnae"),
@@ -115,10 +93,7 @@ def _load_domain_tables(csv_dir: Path) -> dict[str, dict[str, str]]:
         tables[name] = {r[k_col].strip(): r[v_col].strip() for r in rows if k_col in r}
         log.info(f"  Domínio {name}: {len(tables[name]):,}")
     return tables
-
-
 # ── Setup Neo4j ───────────────────────────────────────────────────────────────
-
 Q_CONSTRAINTS = [
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Empresa)   REQUIRE n.cnpj_basico IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Pessoa)    REQUIRE n.cpf IS UNIQUE",
@@ -127,7 +102,6 @@ Q_CONSTRAINTS = [
     # constraint em codigo_rf torna o MERGE em Q_ESTABELECIMENTO_UPDATE O(1) em vez de full scan
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Municipio) REQUIRE n.codigo_rf IS UNIQUE",
 ]
-
 Q_INDEXES = [
     "CREATE INDEX empresa_razao IF NOT EXISTS FOR (e:Empresa) ON (e.razao_social)",
     "CREATE INDEX empresa_cnpj  IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
@@ -135,11 +109,8 @@ Q_INDEXES = [
     "CREATE INDEX empresa_sit   IF NOT EXISTS FOR (e:Empresa) ON (e.situacao_cadastral)",
     "CREATE INDEX pessoa_nome   IF NOT EXISTS FOR (p:Pessoa)  ON (p.nome)",
 ]
-
-
 # ── Queries Cypher ────────────────────────────────────────────────────────────
 # Usa MERGE com SET para ser idempotente (pode rodar múltiplas vezes)
-
 Q_EMPRESA = """
 UNWIND $rows AS r
 MERGE (e:Empresa {cnpj_basico: r.cnpj_basico})
@@ -153,7 +124,6 @@ SET e.razao_social             = r.razao_social,
     e.ente_federativo          = r.ente_federativo,
     e.fonte_snapshot           = r.fonte_snapshot
 """
-
 # Query unificada: SET + MERGE Municipio em uma só transação
 # Elimina metade dos round-trips (era 2 queries por chunk, agora é 1)
 Q_ESTABELECIMENTO_UPDATE = """
@@ -181,7 +151,6 @@ MERGE (e)-[rel:LOCALIZADA_EM]->(m)
 SET rel.cnae_principal = r.cnae_principal,
     rel.uf             = r.uf
 """
-
 Q_SIMPLES = """
 UNWIND $rows AS r
 MATCH (e:Empresa {cnpj_basico: r.cnpj_basico})
@@ -192,7 +161,6 @@ SET e.opcao_simples          = r.opcao_simples,
     e.data_opcao_mei          = r.data_opcao_mei,
     e.data_exclusao_mei       = r.data_exclusao_mei
 """
-
 Q_SOCIO_PF = """
 UNWIND $rows AS r
 MERGE (p:Pessoa {cpf: r.cpf})
@@ -207,7 +175,6 @@ SET s.qualificacao   = r.qualificacao,
     s.faixa_etaria   = r.faixa_etaria,
     s.fonte_snapshot = r.fonte_snapshot
 """
-
 Q_SOCIO_PJ = """
 UNWIND $rows AS r
 MERGE (soc:Empresa {cnpj_basico: r.cnpj_socio_basico})
@@ -219,7 +186,6 @@ SET s.qualificacao   = r.qualificacao,
     s.tipo           = r.tipo,
     s.fonte_snapshot = r.fonte_snapshot
 """
-
 Q_SOCIO_EXT = """
 UNWIND $rows AS r
 MERGE (pai:Pais {codigo: r.pais_cod})
@@ -234,23 +200,23 @@ SET s.qualificacao   = r.qualificacao,
     s.tipo           = r.tipo,
     s.fonte_snapshot = r.fonte_snapshot
 """
-
+# ── CORREÇÃO: usa MESMO_QUE em vez de SET rf.id = ibge.id ────────────────────
+# SET rf.id violava a constraint REQUIRE n.id IS UNIQUE quando dois nós RF
+# tentavam receber o mesmo id IBGE (municípios homônimos em estados diferentes).
+# Agora cria relacionamento entre os dois nós sem alterar propriedades.
 Q_LINK_MUNICIPIO_IBGE = """
 MATCH (rf:Municipio)
-WHERE rf.codigo_rf IS NOT NULL AND rf.id IS NULL
+WHERE rf.codigo_rf IS NOT NULL AND NOT (rf)-[:MESMO_QUE]->()
 WITH rf, toUpper(trim(rf.nome)) AS nome_upper
 MATCH (ibge:Municipio)
-WHERE ibge.id IS NOT NULL AND toUpper(trim(ibge.nome)) = nome_upper
-SET rf.id = ibge.id, rf.ibge_linked = true
+WHERE ibge.id IS NOT NULL AND ibge.codigo_rf IS NULL
+  AND toUpper(trim(ibge.nome)) = nome_upper
+MERGE (rf)-[:MESMO_QUE]->(ibge)
+SET rf.ibge_linked = true
 """
-
-
 # ── Transforms por chunk ──────────────────────────────────────────────────────
-
 def _strip_doc(s: str) -> str:
     return "".join(c for c in s if c.isdigit())
-
-
 def _t_empresas(chunk: list[dict], tables: dict) -> list[dict]:
     nat  = tables.get("naturezas", {})
     out  = []
@@ -272,8 +238,6 @@ def _t_empresas(chunk: list[dict], tables: dict) -> list[dict]:
             "fonte_snapshot":          r.get("fonte_snapshot", ""),
         })
     return out
-
-
 def _t_estabelecimentos(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict]]:
     cnaes = tables.get("cnaes", {})
     munis = tables.get("municipios_rf", {})
@@ -297,6 +261,8 @@ def _t_estabelecimentos(chunk: list[dict], tables: dict) -> tuple[list[dict], li
             "numero":                  r.get("numero", "").strip(),
             "bairro":                  r.get("bairro", "").strip(),
             "email":                   r.get("email", "").strip(),
+            "municipio_cod":           mun_cod,
+            "municipio_nome":          munis.get(mun_cod, mun_cod),
         })
         if mun_cod:
             rels.append({
@@ -307,8 +273,6 @@ def _t_estabelecimentos(chunk: list[dict], tables: dict) -> tuple[list[dict], li
                 "uf":             r.get("uf", "").strip(),
             })
     return updates, rels
-
-
 def _t_simples(chunk: list[dict]) -> list[dict]:
     out = []
     for r in chunk:
@@ -325,8 +289,6 @@ def _t_simples(chunk: list[dict]) -> list[dict]:
             "data_exclusao_mei":    r.get("data_exclusao_mei", "").strip(),
         })
     return out
-
-
 def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], list[dict]]:
     qual_lkp = tables.get("qualificacoes", {})
     pais_lkp = tables.get("paises", {})
@@ -365,10 +327,7 @@ def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], 
                 "faixa_etaria":   r.get("faixa_etaria", "").strip(),
             })
     return pf_rows, pj_rows, ext_rows
-
-
 # ── Loader de batches com retry em deadlock ───────────────────────────────────
-
 def _run_batches(session, query: str, rows: list[dict], extra_params: dict = None,
                  retries: int = 5) -> None:
     """
@@ -378,7 +337,6 @@ def _run_batches(session, query: str, rows: list[dict], extra_params: dict = Non
     """
     import time
     from neo4j.exceptions import TransientError
-
     params = extra_params or {}
     for i in range(0, len(rows), BATCH):
         batch = rows[i : i + BATCH]
@@ -395,13 +353,8 @@ def _run_batches(session, query: str, rows: list[dict], extra_params: dict = Non
                     time.sleep(wait)
                 else:
                     raise
-
-
 _LOG_EVERY = 500_000   # loga progresso a cada N linhas
-
-
 # ── Carga de cada tipo (roda em thread própria) ───────────────────────────────
-
 def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
     path = csv_dir / "empresas.csv"
     total = 0
@@ -413,8 +366,6 @@ def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [empresas] {total:,} linhas inseridas...")
     log.info(f"    [empresas] ✓ {total:,}")
-
-
 def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
     path = csv_dir / "estabelecimentos.csv"
     est_total = 0
@@ -429,8 +380,6 @@ def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str) -
             if est_total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [estabelecimentos] {est_total:,} linhas...")
     log.info(f"    [estabelecimentos] ✓ {est_total:,}")
-
-
 def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
     path = csv_dir / "simples.csv"
     total = 0
@@ -442,8 +391,6 @@ def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [simples] {total:,} linhas inseridas...")
     log.info(f"    [simples] ✓ {total:,}")
-
-
 def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
     path = csv_dir / "socios.csv"
     pf_t = pj_t = ext_t = 0
@@ -463,20 +410,11 @@ def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [socios] {total:,} (PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,})...")
     log.info(f"    [socios] ✓ PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,}")
-
-
 # ── Espera Neo4j ficar pronto ─────────────────────────────────────────────────
-
 def _wait_for_neo4j(uri: str, user: str, password: str,
                     retries: int = 20, delay: float = 5.0) -> "Driver":
-    """
-    Cria o driver e aguarda o Bolt estar aceitando conexões.
-    O healthcheck do Docker verifica o processo, mas a porta 7687 demora
-    alguns segundos a mais para ficar disponível.
-    """
     import time
     from neo4j.exceptions import ServiceUnavailable
-
     driver = GraphDatabase.driver(
         uri,
         auth=(user, password),
@@ -491,68 +429,44 @@ def _wait_for_neo4j(uri: str, user: str, password: str,
         except ServiceUnavailable:
             log.warning(f"  Aguardando Neo4j... ({attempt}/{retries})")
             time.sleep(delay)
-
     raise RuntimeError(f"Neo4j não ficou disponível após {retries} tentativas")
-
-
 # ── Entry-point ───────────────────────────────────────────────────────────────
-
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = False):
     log.info(
         f"[cnpj] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}  workers={WORKERS}"
     )
-
     snapshots = _discover_snapshots()
     if not snapshots:
         log.warning(f"  Nenhum snapshot em {DATA_DIR} — rode 'download cnpj' primeiro")
         return
-
     if not history:
         snapshots = [snapshots[-1]]
         log.info(f"  Snapshot: {snapshots[0][0]}")
     else:
         log.info(f"  Histórico: {len(snapshots)} snapshots")
-
     driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
-
     # ── constraints + índices (antes da carga) ────────────────────────────────
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
-
     for snapshot, csv_dir in snapshots:
         log.info(f"  === Snapshot {snapshot} ===")
         tables = _load_domain_tables(csv_dir)
-
-        # ── ordem de carga:
-        # 1. Empresas   → cria nós :Empresa (chave cnpj_basico)
-        # 2. Simples    → enriquece :Empresa (não cria novos nós)
-        # 3. Estabelecimentos + Socios em paralelo
-        #    Estabelecimentos atualiza :Empresa e cria :Municipio + LOCALIZADA_EM
-        #    Socios cria :Pessoa e relacionamentos SOCIO_DE
-        #    Podem rodar simultâneos pois operam em nós distintos na maioria
-
         log.info("  [1/3] Empresas (sequencial — cria nós base)...")
         _load_empresas(driver, csv_dir, tables, snapshot)
-
         log.info("  [2/3] Simples (sequencial — enriquece Empresa)...")
         _load_simples(driver, csv_dir, snapshot)
-
-        # Estabelecimentos e Sócios sequenciais — ambos escrevem em :Empresa,
-        # paralelismo causa DeadlockDetected. Sequencial é mais seguro e
-        # o retry em _run_batches cobre eventuais contenções residuais.
         log.info("  [3/4] Estabelecimentos (sequencial)...")
         _load_estabelecimentos(driver, csv_dir, tables, snapshot)
-
         log.info("  [4/4] Sócios (sequencial)...")
         _load_socios(driver, csv_dir, tables, snapshot)
-
-        # ── liga municípios RF → nós canônicos IBGE ───────────────────────
-        log.info("  Linkando municípios RF → IBGE...")
+        # ── liga municípios RF → nós canônicos IBGE via MESMO_QUE ─────────
+        log.info("  Linkando municípios RF → IBGE via MESMO_QUE...")
         with driver.session() as session:
-            session.run(Q_LINK_MUNICIPIO_IBGE)
+            with session.begin_transaction() as tx:
+                tx.run(Q_LINK_MUNICIPIO_IBGE)
+                tx.commit()
         log.info("  ✓ municípios linkados")
-
     driver.close()
     log.info("[cnpj] Pipeline concluído")
