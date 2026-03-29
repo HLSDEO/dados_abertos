@@ -86,10 +86,10 @@ DOWNLOADS = {
 PIPELINES = {
     "ibge":             "pipeline/1-ibge.py",
     "cnpj":             "pipeline/2-cnpj.py",
-    "tse":              "pipeline/3-tse.py",
-    "siafi":            "pipeline/4-siafi.py",
-    "servidores_cgu":   "pipeline/5-servidores_cgu.py",
-    "emendas_cgu":      "pipeline/6-emendas_cgu.py",
+    "siafi":            "pipeline/3-siafi.py",
+    "servidores_cgu":   "pipeline/4-servidores_cgu.py",
+    "emendas_cgu":      "pipeline/5-emendas_cgu.py",
+    "tse":              "pipeline/6-tse.py",
     "sancoes_cgu":      "pipeline/7-sancoes_cgu.py",
     "pncp":             "pipeline/8-pncp.py",
 }
