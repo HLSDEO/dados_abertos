@@ -74,7 +74,6 @@ NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
 DOWNLOADS = {
     "ibge":                 "download/1-ibge.py",
     "cnpj":                 "download/2-cnpj.py",
-    "cpgf":                 "download/3-cpgf.py",
     "tse":                  "download/3-tse.py",
     "emendas_cgu":          "download/4-emendas_cgu.py",
     "tesouro_transparente": "download/5-tesouro_transparente.py",
@@ -89,8 +88,8 @@ PIPELINES = {
     "cnpj":             "pipeline/2-cnpj.py",
     "tse":              "pipeline/3-tse.py",
     "siafi":            "pipeline/4-siafi.py",
-    "emendas_cgu":      "pipeline/5-emendas_cgu.py",
-    "servidores_cgu":   "pipeline/6-servidores_cgu.py",
+    "servidores_cgu":   "pipeline/5-servidores_cgu.py",
+    "emendas_cgu":      "pipeline/6-emendas_cgu.py",
     "sancoes_cgu":      "pipeline/7-sancoes_cgu.py",
     "pncp":             "pipeline/8-pncp.py",
 }
