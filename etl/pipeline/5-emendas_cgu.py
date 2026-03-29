@@ -194,33 +194,32 @@ MERGE (par)-[:MESMO_QUE]->(p)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _build_nome_cpf_map() -> dict[str, str]:
+def _build_nome_cpf_map(driver) -> dict[str, str]:
     """
-    Lê CSVs de candidatos TSE e constrói nome_urna/nome → cpf.
-    Usado para linkar :Parlamentar → :Pessoa sem full scan.
-    Retorna dict vazio se os dados TSE não existirem.
+    Consulta o Neo4j para construir nome_autor → cpf a partir dos
+    candidatos TSE já carregados no grafo.
+    Muito mais rápido que ler CSVs — o grafo já tem o cruzamento pronto.
+    Retorna dict vazio se TSE não estiver carregado.
     """
-    tse_dir = Path(os.environ.get("DATA_DIR",
-                   Path(__file__).resolve().parents[2] / "data")) / "tse" / "candidatos"
     nome_cpf: dict[str, str] = {}
-    if not tse_dir.exists():
-        log.warning("  TSE candidatos não encontrado — link parlamentar→pessoa pulado")
-        return nome_cpf
-
-    for path in sorted(tse_dir.glob("candidatos_*.csv")):
-        log.info(f"    Lendo {path.name}...")
-        for chunk in iter_csv(path):
-            for r in chunk:
-                cpf = "".join(c for c in r.get("NR_CPF_CANDIDATO", "") if c.isdigit())
-                if len(cpf) != 11:
+    try:
+        with driver.session() as session:
+            result = session.run("""
+                MATCH (p:Pessoa)-[:CANDIDATO_EM]->()
+                WHERE p.cpf IS NOT NULL AND p.nome IS NOT NULL
+                RETURN p.cpf AS cpf, p.nome AS nome,
+                       p.nome_urna AS nome_urna
+            """)
+            for rec in result:
+                cpf = rec["cpf"]
+                if not cpf or len(cpf) != 11:
                     continue
-                cpf = cpf.zfill(11)
-                for campo in ("NM_CANDIDATO", "NM_URNA_CANDIDATO"):
-                    nome = r.get(campo, "").strip().upper()
-                    if nome:
-                        nome_cpf.setdefault(nome, cpf)
-
-    log.info(f"  Mapa nome→cpf TSE: {len(nome_cpf):,} entradas")
+                for campo in (rec["nome"], rec["nome_urna"]):
+                    if campo:
+                        nome_cpf.setdefault(campo.strip().upper(), cpf)
+        log.info(f"  Mapa nome→cpf (grafo TSE): {len(nome_cpf):,} entradas")
+    except Exception as exc:
+        log.warning(f"  Não foi possível construir mapa nome→cpf: {exc}")
     return nome_cpf
 
 
@@ -456,7 +455,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     _load_por_favorecido(driver)
 
     log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
-    nome_cpf = _build_nome_cpf_map()
+    nome_cpf = _build_nome_cpf_map(driver)
     if nome_cpf:
         # resolve em Python — evita full scan em 30M :Pessoa
         link_rows = []
