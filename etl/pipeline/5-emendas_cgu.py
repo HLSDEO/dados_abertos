@@ -52,9 +52,11 @@ Q_CONSTRAINTS = [
 ]
 
 Q_INDEXES = [
-    "CREATE INDEX emenda_ano   IF NOT EXISTS FOR (e:Emenda) ON (e.ano_emenda)",
-    "CREATE INDEX emenda_tipo  IF NOT EXISTS FOR (e:Emenda) ON (e.tipo_emenda)",
-    "CREATE INDEX parlamentar_nome IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
+    "CREATE INDEX emenda_ano        IF NOT EXISTS FOR (e:Emenda)    ON (e.ano_emenda)",
+    "CREATE INDEX emenda_tipo       IF NOT EXISTS FOR (e:Emenda)    ON (e.tipo_emenda)",
+    "CREATE INDEX parlamentar_nome  IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
+    "CREATE INDEX municipio_cod_ibge IF NOT EXISTS FOR (m:Municipio) ON (m.codigo_ibge)",
+    "CREATE INDEX pessoa_nome_urna  IF NOT EXISTS FOR (p:Pessoa)    ON (p.nome_urna)",
 ]
 
 
@@ -110,8 +112,15 @@ MERGE (p)-[:AUTORA_DE]->(e)
 Q_EMENDA_MUNICIPIO = """
 UNWIND $rows AS r
 MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
-MATCH (m:Municipio)
-WHERE m.id = r.codigo_ibge OR m.codigo_ibge = r.codigo_ibge
+MATCH (m:Municipio {id: r.codigo_ibge})
+MERGE (e)-[:DESTINADA_A]->(m)
+"""
+
+Q_EMENDA_MUNICIPIO_RF = """
+UNWIND $rows AS r
+MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
+WHERE NOT (e)-[:DESTINADA_A]->()
+MATCH (m:Municipio {codigo_ibge: r.codigo_ibge})
 MERGE (e)-[:DESTINADA_A]->(m)
 """
 
@@ -157,21 +166,45 @@ MERGE (emp:Empresa {cnpj_basico: left(r.cnpj_favorecido, 8)})
 MERGE (d)-[:PAGO_A]->(emp)
 """
 
-# Merge Parlamentar → Pessoa (se CPF/nome bater com candidatos TSE)
+# Link parlamentar → pessoa resolvido em Python via dicionário nome→cpf
+# carregado dos CSVs de candidatos TSE — evita full scan em 30M :Pessoa
 Q_LINK_PARLAMENTAR_PESSOA = """
-MATCH (par:Parlamentar)
-WHERE par.nome_autor IS NOT NULL
-WITH par, toUpper(trim(par.nome_autor)) AS nome_upper
-MATCH (p:Pessoa)
-WHERE toUpper(trim(p.nome)) = nome_upper
-   OR toUpper(trim(p.nome_urna)) = nome_upper
+UNWIND $rows AS r
+MATCH (par:Parlamentar {codigo_autor: r.codigo_autor})
+MATCH (p:Pessoa {cpf: r.cpf})
 MERGE (par)-[:MESMO_QUE]->(p)
 """
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _safe_float(s: str) -> str:
+def _build_nome_cpf_map() -> dict[str, str]:
+    """
+    Lê CSVs de candidatos TSE e constrói nome_urna/nome → cpf.
+    Usado para linkar :Parlamentar → :Pessoa sem full scan.
+    Retorna dict vazio se os dados TSE não existirem.
+    """
+    tse_dir = Path(os.environ.get("DATA_DIR",
+                   Path(__file__).resolve().parents[2] / "data")) / "tse" / "candidatos"
+    nome_cpf: dict[str, str] = {}
+    if not tse_dir.exists():
+        log.warning("  TSE candidatos não encontrado — link parlamentar→pessoa pulado")
+        return nome_cpf
+
+    for path in sorted(tse_dir.glob("candidatos_*.csv")):
+        for chunk in iter_csv(path):
+            for r in chunk:
+                cpf = "".join(c for c in r.get("NR_CPF_CANDIDATO", "") if c.isdigit())
+                if len(cpf) != 11:
+                    continue
+                cpf = cpf.zfill(11)
+                for campo in ("NM_CANDIDATO", "NM_URNA_CANDIDATO"):
+                    nome = r.get(campo, "").strip().upper()
+                    if nome:
+                        nome_cpf.setdefault(nome, cpf)
+
+    log.info(f"  Mapa nome→cpf TSE: {len(nome_cpf):,} entradas")
+    return nome_cpf
     s = (s or "").strip()
     if not s:
         return "0"
@@ -332,7 +365,10 @@ def _load_emendas(driver) -> None:
             if t["autoriais"]:
                 run_batches(session, Q_AUTORIA, t["autoriais"])
             if t["dest_mun"]:
+                # primeiro tenta pelo id IBGE (constraint → O(1))
                 run_batches(session, Q_EMENDA_MUNICIPIO, t["dest_mun"])
+                # fallback para municípios RF sem id IBGE
+                run_batches(session, Q_EMENDA_MUNICIPIO_RF, t["dest_mun"])
             if t["dest_est"]:
                 run_batches(session, Q_EMENDA_ESTADO, t["dest_est"])
             if t["dest_funcao"]:
@@ -390,9 +426,27 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     _load_por_favorecido(driver)
 
     log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
-    with driver.session() as session:
-        session.run(Q_LINK_PARLAMENTAR_PESSOA)
-    log.info("    ✓ link parlamentar-pessoa concluído")
+    nome_cpf = _build_nome_cpf_map()
+    if nome_cpf:
+        # resolve em Python — evita full scan em 30M :Pessoa
+        link_rows = []
+        with driver.session() as session:
+            result = session.run(
+                "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
+            )
+            for rec in result:
+                nome_up = (rec["nome"] or "").strip().upper()
+                cpf = nome_cpf.get(nome_up, "")
+                if cpf:
+                    link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
+        if link_rows:
+            with driver.session() as session:
+                run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
+            log.info(f"    ✓ {len(link_rows):,} parlamentares linkados a :Pessoa")
+        else:
+            log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
+    else:
+        log.info("    Pulado — dados TSE não disponíveis")
 
     driver.close()
     log.info("[emendas_cgu] Pipeline concluído")
