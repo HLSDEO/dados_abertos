@@ -45,10 +45,12 @@ FONTE = {
 # ── Constraints e índices ─────────────────────────────────────────────────────
 
 Q_CONSTRAINTS = [
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Emenda)            REQUIRE n.codigo_emenda IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Parlamentar)       REQUIRE n.codigo_autor  IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:FuncaoOrcamentaria) REQUIRE n.codigo_funcao IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Programa)          REQUIRE n.codigo_programa IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Emenda)            REQUIRE n.codigo_emenda    IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Parlamentar)       REQUIRE n.codigo_autor     IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:FuncaoOrcamentaria) REQUIRE n.codigo_funcao   IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Programa)          REQUIRE n.codigo_programa  IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Convenio)          REQUIRE n.numero_convenio  IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Despesa)           REQUIRE n.codigo_despesa   IS UNIQUE",
 ]
 
 Q_INDEXES = [
@@ -138,31 +140,45 @@ MATCH (f:FuncaoOrcamentaria {codigo_funcao: r.codigo_funcao})
 MERGE (e)-[:CLASSIFICADA_EM]->(f)
 """
 
-Q_CONVENIO = """
+Q_CONVENIO_NOS = """
 UNWIND $rows AS r
-MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
 MERGE (c:Convenio {numero_convenio: r.numero_convenio})
-SET c.objeto         = r.objeto,
-    c.valor_emenda   = toFloat(r.valor_emenda),
-    c.situacao       = r.situacao,
-    c.fonte_nome     = r.fonte_nome
+SET c.objeto       = r.objeto,
+    c.valor_emenda = toFloat(r.valor_emenda),
+    c.situacao     = r.situacao,
+    c.fonte_nome   = r.fonte_nome
+"""
+
+Q_CONVENIO_REL = """
+UNWIND $rows AS r
+MATCH (e:Emenda  {codigo_emenda:   r.codigo_emenda})
+MATCH (c:Convenio {numero_convenio: r.numero_convenio})
 MERGE (e)-[:TEM_CONVENIO]->(c)
 """
 
-Q_DESPESA = """
+Q_DESPESA_NOS = """
 UNWIND $rows AS r
-MATCH (e:Emenda {codigo_emenda: r.codigo_emenda})
 MERGE (d:Despesa {codigo_despesa: r.codigo_despesa})
-SET d.valor_empenhado  = toFloat(r.valor_empenhado),
-    d.valor_liquidado  = toFloat(r.valor_liquidado),
-    d.valor_pago       = toFloat(r.valor_pago),
-    d.nome_favorecido  = r.nome_favorecido,
-    d.cnpj_favorecido  = r.cnpj_favorecido,
-    d.fonte_nome       = r.fonte_nome
+SET d.valor_empenhado = toFloat(r.valor_empenhado),
+    d.valor_liquidado = toFloat(r.valor_liquidado),
+    d.valor_pago      = toFloat(r.valor_pago),
+    d.nome_favorecido = r.nome_favorecido,
+    d.cnpj_favorecido = r.cnpj_favorecido,
+    d.fonte_nome      = r.fonte_nome
+"""
+
+Q_DESPESA_REL = """
+UNWIND $rows AS r
+MATCH (e:Emenda  {codigo_emenda:  r.codigo_emenda})
+MATCH (d:Despesa {codigo_despesa: r.codigo_despesa})
 MERGE (e)-[:TEM_DESPESA]->(d)
-WITH d, r
+"""
+
+Q_DESPESA_EMPRESA = """
+UNWIND $rows AS r
+MATCH (d:Despesa {codigo_despesa: r.codigo_despesa})
 WHERE r.cnpj_favorecido <> ""
-MERGE (emp:Empresa {cnpj_basico: left(r.cnpj_favorecido, 8)})
+MERGE (emp:Empresa {cnpj_basico: r.cnpj_favorecido})
 MERGE (d)-[:PAGO_A]->(emp)
 """
 
@@ -205,6 +221,7 @@ def _build_nome_cpf_map() -> dict[str, str]:
 
     log.info(f"  Mapa nome→cpf TSE: {len(nome_cpf):,} entradas")
     return nome_cpf
+
 
 def _safe_float(s: str) -> str:
     s = (s or "").strip()
@@ -382,27 +399,37 @@ def _load_emendas(driver) -> None:
 def _load_convenios(driver) -> None:
     path = DATA_DIR / "convenios.csv"
     total = 0
+    # batch menor — convênios têm MERGE em dois nós + rel
+    batch_conv = min(BATCH, 500)
     with driver.session() as session:
-        for chunk in iter_csv(path):
+        for chunk in iter_csv(path, chunk_size=10000):
             rows = _t_convenios(chunk)
-            if rows:
-                run_batches(session, Q_CONVENIO, rows)
-                total += len(rows)
+            if not rows:
+                continue
+            run_batches(session, Q_CONVENIO_NOS, rows, batch=batch_conv)
+            run_batches(session, Q_CONVENIO_REL, rows, batch=batch_conv)
+            total += len(rows)
     log.info(f"    ✓ convênios={total:,}")
 
 
 def _load_por_favorecido(driver) -> None:
     path = DATA_DIR / "por_favorecido.csv"
     if not path.exists():
-        # fallback: tentou baixar como despesas.csv antes da correção
         path = DATA_DIR / "despesas.csv"
     total = 0
+    batch_desp = min(BATCH, 500)
     with driver.session() as session:
-        for chunk in iter_csv(path):
+        for chunk in iter_csv(path, chunk_size=10000):
             rows = _t_despesas(chunk)
-            if rows:
-                run_batches(session, Q_DESPESA, rows)
-                total += len(rows)
+            if not rows:
+                continue
+            run_batches(session, Q_DESPESA_NOS, rows, batch=batch_desp)
+            run_batches(session, Q_DESPESA_REL, rows, batch=batch_desp)
+            # vincula empresa apenas para rows com cnpj
+            com_cnpj = [r for r in rows if r.get("cnpj_favorecido")]
+            if com_cnpj:
+                run_batches(session, Q_DESPESA_EMPRESA, com_cnpj, batch=batch_desp)
+            total += len(rows)
     log.info(f"    ✓ por_favorecido={total:,}")
 
 
