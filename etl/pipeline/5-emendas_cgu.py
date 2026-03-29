@@ -208,6 +208,7 @@ def _build_nome_cpf_map() -> dict[str, str]:
         return nome_cpf
 
     for path in sorted(tse_dir.glob("candidatos_*.csv")):
+        log.info(f"    Lendo {path.name}...")
         for chunk in iter_csv(path):
             for r in chunk:
                 cpf = "".join(c for c in r.get("NR_CPF_CANDIDATO", "") if c.isdigit())
