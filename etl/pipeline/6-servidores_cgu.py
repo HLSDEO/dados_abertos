@@ -1,23 +1,6 @@
 """
 Pipeline 6 - Servidores Públicos Federais → Neo4j
-
-Lê os CSVs de data/servidores/{ano}/{mes:02d}/
-  cadastro.csv    → :Servidor, :UnidadeGestora (merge com siafi)
-  remuneracao.csv → :Remuneracao vinculada ao :Servidor
-
-Nós criados/atualizados:
-  (:Servidor)    — id_servidor como chave
-  (:Pessoa)      — merge pelo CPF com candidatos TSE e CNPJ
-  (:Remuneracao) — id_servidor + ano + mes como chave
-
-Relacionamentos:
-  (:Pessoa)-[:EH_SERVIDOR]->(:Servidor)
-  (:Servidor)-[:LOTADO_EM]->(:UnidadeGestora)     ← pelo cd_uasg (siafi)
-  (:Servidor)-[:EXERCE_EM]->(:UnidadeGestora)     ← org_exercicio
-  (:Servidor)-[:TEM_REMUNERACAO]->(:Remuneracao)
-  (:Servidor)-[:LOCALIZADO_EM]->(:Municipio)      ← municipio_exercicio + IBGE
 """
-
 import csv
 import logging
 import os
@@ -41,16 +24,21 @@ FONTE = {
 # ── Constraints e índices ─────────────────────────────────────────────────────
 
 Q_CONSTRAINTS = [
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Servidor)    REQUIRE n.id_servidor IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Servidor)    REQUIRE n.id_servidor    IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Remuneracao) REQUIRE n.remuneracao_id IS UNIQUE",
 ]
 
 Q_INDEXES = [
-    "CREATE INDEX servidor_nome    IF NOT EXISTS FOR (s:Servidor) ON (s.nome)",
-    "CREATE INDEX servidor_cpf     IF NOT EXISTS FOR (s:Servidor) ON (s.cpf)",
-    "CREATE INDEX servidor_cargo   IF NOT EXISTS FOR (s:Servidor) ON (s.cargo)",
-    "CREATE INDEX servidor_orgao   IF NOT EXISTS FOR (s:Servidor) ON (s.org_exercicio)",
-    "CREATE INDEX remuneracao_ano  IF NOT EXISTS FOR (r:Remuneracao) ON (r.ano)",
+    "CREATE INDEX servidor_nome   IF NOT EXISTS FOR (s:Servidor) ON (s.nome)",
+    "CREATE INDEX servidor_cpf    IF NOT EXISTS FOR (s:Servidor) ON (s.cpf)",
+    "CREATE INDEX servidor_cargo  IF NOT EXISTS FOR (s:Servidor) ON (s.cargo)",
+    "CREATE INDEX servidor_orgao  IF NOT EXISTS FOR (s:Servidor) ON (s.org_exercicio)",
+    "CREATE INDEX remuneracao_ano IF NOT EXISTS FOR (r:Remuneracao) ON (r.ano)",
+    # índices para Q_EXERCE_EM — evita full scan em 53k UnidadeGestora
+    "CREATE INDEX uasg_no_uasg IF NOT EXISTS FOR (u:UnidadeGestora) ON (u.no_uasg)",
+    "CREATE INDEX uasg_sg_uasg IF NOT EXISTS FOR (u:UnidadeGestora) ON (u.sg_uasg)",
+    # índice para Q_SERVIDOR_MUNICIPIO — evita full scan com EXISTS traversal
+    "CREATE INDEX municipio_uf IF NOT EXISTS FOR (m:Municipio) ON (m.uf)",
 ]
 
 
@@ -81,11 +69,9 @@ SET s.nome                  = r.nome,
     s.fonte_url             = r.fonte_url
 """
 
-# Merge Servidor → Pessoa pelo CPF
 Q_SERVIDOR_PESSOA = """
 UNWIND $rows AS r
 MATCH (s:Servidor {id_servidor: r.id_servidor})
-WHERE r.cpf <> "" AND r.cpf <> "***.***.***-**"
 MERGE (p:Pessoa {cpf: r.cpf})
   ON CREATE SET p.nome      = r.nome,
                 p.fonte_nome = r.fonte_nome
@@ -93,71 +79,58 @@ MERGE (p:Pessoa {cpf: r.cpf})
 MERGE (p)-[:EH_SERVIDOR]->(s)
 """
 
-# Vincula ao UASG (siafi) pelo cd_uasg
 Q_SERVIDOR_UASG = """
 UNWIND $rows AS r
 MATCH (s:Servidor {id_servidor: r.id_servidor})
-WHERE r.cd_uasg <> ""
 MATCH (u:UnidadeGestora {cd_uasg: r.cd_uasg})
 MERGE (s)-[:LOTADO_EM]->(u)
 """
 
-# Vincula ao município de exercício (pelo nome — IBGE já carregado)
+# Sem EXISTS traversal — usa só m.uf (indexado)
 Q_SERVIDOR_MUNICIPIO = """
 UNWIND $rows AS r
 MATCH (s:Servidor {id_servidor: r.id_servidor})
-WHERE r.municipio_exercicio <> ""
 MATCH (m:Municipio)
 WHERE toUpper(trim(m.nome)) = toUpper(trim(r.municipio_exercicio))
-  AND (m.uf = r.uf_exercicio OR r.uf_exercicio = "")
+  AND (r.uf_exercicio = "" OR m.uf = r.uf_exercicio)
+WITH s, m ORDER BY m.id IS NOT NULL DESC LIMIT 1
 MERGE (s)-[:LOCALIZADO_EM]->(m)
 """
 
-Q_REMUNERACAO = """
-UNWIND $rows AS r
-MERGE (rem:Remuneracao {remuneracao_id: r.remuneracao_id})
-SET rem.ano                    = toInteger(r.ano),
-    rem.mes                    = toInteger(r.mes),
-    rem.remuneracao_bruta      = toFloat(r.remuneracao_bruta),
-    rem.remuneracao_liquida    = toFloat(r.remuneracao_liquida),
-    rem.total_bruto            = toFloat(r.total_bruto),
-    rem.irrf                   = toFloat(r.irrf),
-    rem.pss_rpps               = toFloat(r.pss_rpps),
-    rem.abate_teto             = toFloat(r.abate_teto),
-    rem.gratificacao_natalina  = toFloat(r.gratificacao_natalina),
-    rem.ferias                 = toFloat(r.ferias),
-    rem.verbas_indenizatorias  = toFloat(r.verbas_indenizatorias),
-    rem.outras_verbas          = toFloat(r.outras_verbas),
-    rem.fonte_nome             = r.fonte_nome
-WITH rem, r
-MATCH (s:Servidor {id_servidor: r.id_servidor})
-MERGE (s)-[:TEM_REMUNERACAO]->(rem)
-"""
-
-
-
+# EXERCE_EM usa no_uasg indexado (sem OR com sg_uasg para evitar full scan)
 Q_EXERCE_EM = """
 UNWIND $rows AS r
 MATCH (s:Servidor {id_servidor: r.id_servidor})
-WHERE r.org_exercicio <> "" AND r.org_exercicio <> r.org_lotacao
-MATCH (u:UnidadeGestora)
-WHERE u.no_uasg = r.org_exercicio OR u.sg_uasg = r.org_exercicio
+MATCH (u:UnidadeGestora {no_uasg: r.org_exercicio})
 MERGE (s)-[:EXERCE_EM]->(u)
 """
 
-Q_SERVIDOR_MUNICIPIO_FIXED = """
+# Remuneracao: nó separado do relacionamento para reduzir contenção
+Q_REMUNERACAO_NOS = """
 UNWIND $rows AS r
-MATCH (s:Servidor {id_servidor: r.id_servidor})
-WHERE r.municipio_exercicio <> ""
-MATCH (m:Municipio)
-WHERE toUpper(trim(m.nome)) = toUpper(trim(r.municipio_exercicio))
-  AND (r.uf_exercicio = "" OR m.uf = r.uf_exercicio
-       OR EXISTS { MATCH (m)-[:PERTENCE_A*]->(:Estado {sigla: r.uf_exercicio}) })
-WITH s, m
-ORDER BY m.id IS NOT NULL DESC
-LIMIT 1
-MERGE (s)-[:LOCALIZADO_EM]->(m)
+MERGE (rem:Remuneracao {remuneracao_id: r.remuneracao_id})
+SET rem.ano                   = toInteger(r.ano),
+    rem.mes                   = toInteger(r.mes),
+    rem.remuneracao_bruta     = toFloat(r.remuneracao_bruta),
+    rem.remuneracao_liquida   = toFloat(r.remuneracao_liquida),
+    rem.total_bruto           = toFloat(r.total_bruto),
+    rem.irrf                  = toFloat(r.irrf),
+    rem.pss_rpps              = toFloat(r.pss_rpps),
+    rem.abate_teto            = toFloat(r.abate_teto),
+    rem.gratificacao_natalina = toFloat(r.gratificacao_natalina),
+    rem.ferias                = toFloat(r.ferias),
+    rem.verbas_indenizatorias = toFloat(r.verbas_indenizatorias),
+    rem.outras_verbas         = toFloat(r.outras_verbas),
+    rem.fonte_nome            = r.fonte_nome
 """
+
+Q_REMUNERACAO_REL = """
+UNWIND $rows AS r
+MATCH (s:Servidor   {id_servidor:   r.id_servidor})
+MATCH (rem:Remuneracao {remuneracao_id: r.remuneracao_id})
+MERGE (s)-[:TEM_REMUNERACAO]->(rem)
+"""
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,7 +143,6 @@ def _safe_float(s: str) -> str:
 
 
 def _discover_periodos() -> list[tuple[int, int]]:
-    """Descobre todos os pares (ano, mes) disponíveis em data/servidores/."""
     result = []
     if not DATA_DIR.exists():
         return result
@@ -180,9 +152,7 @@ def _discover_periodos() -> list[tuple[int, int]]:
         for mes_dir in sorted(ano_dir.iterdir()):
             if not mes_dir.is_dir() or not mes_dir.name.isdigit():
                 continue
-            cad = mes_dir / "cadastro.csv"
-            rem = mes_dir / "remuneracao.csv"
-            if cad.exists() or rem.exists():
+            if (mes_dir / "cadastro.csv").exists() or (mes_dir / "remuneracao.csv").exists():
                 result.append((int(ano_dir.name), int(mes_dir.name)))
     return result
 
@@ -191,37 +161,41 @@ def _discover_periodos() -> list[tuple[int, int]]:
 
 def _load_cadastro(driver, path: Path) -> int:
     total = 0
-    rows_uasg = []
-    rows_mun  = []
-
     with driver.session() as session:
         for chunk in iter_csv(path):
+            # 1. cria/atualiza nós :Servidor
             run_batches(session, Q_SERVIDOR, chunk)
 
-            # filtra para vínculos
-            for r in chunk:
-                if r.get("cd_uasg"):
-                    rows_uasg.append({"id_servidor": r["id_servidor"],
-                                      "cd_uasg": r["cd_uasg"]})
-                if r.get("municipio_exercicio"):
-                    rows_mun.append({
-                        "id_servidor":        r["id_servidor"],
-                        "municipio_exercicio":r["municipio_exercicio"],
-                        "uf_exercicio":       r.get("uf_exercicio", ""),
-                    })
-
-            # pessoas (CPF)
+            # 2. vincula :Pessoa pelo CPF (filtra mascarados em Python)
             com_cpf = [r for r in chunk
-                       if r.get("cpf") and "***" not in r.get("cpf","")]
+                       if r.get("cpf") and "***" not in r["cpf"] and len(r["cpf"]) >= 11]
             if com_cpf:
                 run_batches(session, Q_SERVIDOR_PESSOA, com_cpf)
 
-            total += len(chunk)
+            # 3. vincula :UnidadeGestora (LOTADO_EM) — flush por chunk
+            com_uasg = [{"id_servidor": r["id_servidor"], "cd_uasg": r["cd_uasg"]}
+                        for r in chunk if r.get("cd_uasg")]
+            if com_uasg:
+                run_batches(session, Q_SERVIDOR_UASG, com_uasg)
 
-        if rows_uasg:
-            run_batches(session, Q_SERVIDOR_UASG, rows_uasg)
-        if rows_mun:
-            run_batches(session, Q_SERVIDOR_MUNICIPIO, rows_mun)
+            # 4. EXERCE_EM — só quando org_exercicio != org_lotacao
+            exerce = [{"id_servidor": r["id_servidor"],
+                       "org_exercicio": r["org_exercicio"]}
+                      for r in chunk
+                      if r.get("org_exercicio")
+                      and r.get("org_exercicio") != r.get("org_lotacao")]
+            if exerce:
+                run_batches(session, Q_EXERCE_EM, exerce)
+
+            # 5. LOCALIZADO_EM — flush por chunk
+            com_mun = [{"id_servidor":         r["id_servidor"],
+                        "municipio_exercicio":  r["municipio_exercicio"],
+                        "uf_exercicio":         r.get("uf_exercicio", "")}
+                       for r in chunk if r.get("municipio_exercicio")]
+            if com_mun:
+                run_batches(session, Q_SERVIDOR_MUNICIPIO, com_mun)
+
+            total += len(chunk)
 
     return total
 
@@ -230,14 +204,19 @@ def _load_remuneracao(driver, path: Path) -> int:
     total = 0
     with driver.session() as session:
         for chunk in iter_csv(path):
-            # cria chave composta única
             for r in chunk:
-                r["remuneracao_id"] = f"{r.get('id_servidor','')}_{r.get('fonte_categoria','')}_{r.get('ano','')}_{r.get('mes','')}"
+                r["remuneracao_id"] = (
+                    f"{r.get('id_servidor','')}_{r.get('fonte_categoria','')} "
+                    f"_{r.get('ano','')}_{r.get('mes','')}"
+                )
                 for col in ("remuneracao_bruta", "remuneracao_liquida", "total_bruto",
                             "irrf", "pss_rpps", "abate_teto", "gratificacao_natalina",
                             "ferias", "verbas_indenizatorias", "outras_verbas"):
                     r[col] = _safe_float(r.get(col, "0"))
-            run_batches(session, Q_REMUNERACAO, chunk)
+
+            # nós primeiro, rel depois — menos contenção
+            run_batches(session, Q_REMUNERACAO_NOS, chunk)
+            run_batches(session, Q_REMUNERACAO_REL, chunk)
             total += len(chunk)
     return total
 
@@ -246,10 +225,6 @@ def _load_remuneracao(driver, path: Path) -> int:
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         anos: list[int] | None = None, meses: list[int] | None = None):
-    """
-    anos:  filtra anos específicos. None = todos disponíveis.
-    meses: filtra meses específicos. None = todos disponíveis.
-    """
     log.info(f"[servidores] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     periodos = _discover_periodos()
@@ -257,7 +232,6 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         log.warning(f"  Nenhum dado em {DATA_DIR} — rode 'download servidores' primeiro")
         return
 
-    # aplica filtros
     if anos:
         periodos = [(a, m) for a, m in periodos if a in anos]
     if meses:
@@ -267,7 +241,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         log.warning("  Nenhum período encontrado com os filtros aplicados")
         return
 
-    log.info(f"  Períodos a processar: {len(periodos)}  {periodos[:5]}{'...' if len(periodos)>5 else ''}")
+    log.info(f"  Períodos: {len(periodos)}  {periodos[:5]}{'...' if len(periodos)>5 else ''}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
@@ -277,21 +251,20 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
             session.run(q)
 
     for ano, mes in periodos:
-        mes_dir = DATA_DIR / str(ano) / f"{mes:02d}"
-        log.info(f"  === {ano}/{mes:02d} ===")
-
+        mes_dir  = DATA_DIR / str(ano) / f"{mes:02d}"
         cad_path = mes_dir / "cadastro.csv"
         rem_path = mes_dir / "remuneracao.csv"
+        log.info(f"  === {ano}/{mes:02d} ===")
 
         if cad_path.exists():
-            log.info(f"  [cadastro]...")
+            log.info("  [cadastro]...")
             n = _load_cadastro(driver, cad_path)
             log.info(f"    ✓ {n:,} servidores")
 
         if rem_path.exists():
-            log.info(f"  [remuneracao]...")
+            log.info("  [remuneracao]...")
             n = _load_remuneracao(driver, rem_path)
-            log.info(f"    ✓ {n:,} registros de remuneração")
+            log.info(f"    ✓ {n:,} registros")
 
     driver.close()
     log.info("[servidores] Pipeline concluído")
