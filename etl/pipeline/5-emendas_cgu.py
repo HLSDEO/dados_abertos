@@ -205,6 +205,8 @@ def _build_nome_cpf_map() -> dict[str, str]:
 
     log.info(f"  Mapa nome→cpf TSE: {len(nome_cpf):,} entradas")
     return nome_cpf
+
+def _safe_float(s: str) -> str:
     s = (s or "").strip()
     if not s:
         return "0"
