@@ -26,10 +26,11 @@
 | :--- | :---: |
 | ibge | Dados do IBGE relacionados a munícipios, estados. |
 | cnpj | Dados da receita federal relacionados a empresas, sócios e estabelecimentos. |
-| tse | Dados do TSE relacionados ao candidatos a eleições e doadores. |
 | siafi | Dados de órgãos e unidades com seu código SIAFI. |
-| emendas_cgu | Dados obtidos do CGU, relacionados a emendas parlamentares. |
 | servidores_cgu | Dados obtidos do CGU, relacionados aos servidores SIAPE, militares. |
+| emendas_cgu | Dados obtidos do CGU, relacionados a emendas parlamentares. |
+| tse | Dados do TSE relacionados ao candidatos a eleições e doadores. |
+| sancoes_cgu | Dados obtidos do CGU, relacionados a sanções aplicadas a empresas. |
 | tesouro_transparente | Dados do Tesouro Transparente relacionados a dados de ordem bancária de emendas parlamentares individuais e de bancada. |
 
 ## 4. acessa o browser do Neo4j
