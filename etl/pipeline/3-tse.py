@@ -291,8 +291,13 @@ def _t_candidatos(chunk: list[dict]) -> dict[str, list[dict]]:
     }
 
 
-def _t_doacoes(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
-    """Separa doações em PF e PJ pelo tamanho do documento."""
+def _t_doacoes(chunk: list[dict],
+               sq_cpf: dict[str, str]) -> tuple[list[dict], list[dict]]:
+    """
+    Separa doações em PF e PJ.
+    sq_cpf: dicionário sq_candidato → cpf, construído dos CSVs de candidatos.
+    Doações sem CPF resolvido são descartadas silenciosamente.
+    """
     pf_rows, pj_rows = [], []
     for r in chunk:
         doc_raw   = _strip_doc(r.get("cpf_cnpj_doador", ""))
@@ -300,52 +305,56 @@ def _t_doacoes(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
         sq_cand   = r.get("sq_candidato", "").strip()
         nome_d    = r.get("nome_doador", "").strip()
         ano       = r.get("ano", "").strip()
-        fonte_nome= r.get("fonte_nome", FONTE["fonte_nome"])
+        fonte_nome = r.get("fonte_nome", FONTE["fonte_nome"])
 
         try:
             float(valor_raw)
         except ValueError:
             valor_raw = "0"
 
-        # precisamos do CPF do candidato — sq_candidato não é suficiente
-        # registra sq_candidato para cruzamento posterior
+        # resolve CPF do candidato via dicionário Python — O(1), sem round-trip Neo4j
+        cpf_cand = sq_cpf.get(sq_cand, "")
+        if not cpf_cand:
+            continue   # descarta doação sem candidato identificável
+
         base = {
             "sq_candidato":  sq_cand,
+            "cpf_candidato": cpf_cand,
             "nome_doador":   nome_d,
             "valor":         valor_raw,
             "ano":           ano,
             "fonte_nome":    fonte_nome,
-            # cpf_candidato será preenchido no pipeline por JOIN com candidatos
-            "cpf_candidato": f"SQ_{sq_cand}",
         }
 
-        if len(doc_raw) == 11:       # CPF → PF
+        if len(doc_raw) == 11:
             pf_rows.append({**base, "cpf_doador": doc_raw.zfill(11)})
-        elif len(doc_raw) in (14, 8):  # CNPJ → PJ
-            cnpj_basico = doc_raw[:8].zfill(8)
-            pj_rows.append({**base, "cnpj_basico_doador": cnpj_basico})
+        elif len(doc_raw) in (14, 8):
+            pj_rows.append({**base, "cnpj_basico_doador": doc_raw[:8].zfill(8)})
 
     return pf_rows, pj_rows
 
 
-
-Q_LINK_DOACAO_CANDIDATO = """
-MATCH (rel)-[d:DOOU_PARA]->(fake:Pessoa)
-WHERE fake.cpf STARTS WITH 'SQ_'
-WITH rel, d, fake, replace(fake.cpf, 'SQ_', '') AS sq
-MATCH (cand:Pessoa)-[c:CANDIDATO_EM]->()
-WHERE c.sq_candidato = sq
-WITH rel, d, fake, cand
-CALL {
-  WITH rel, d, fake, cand
-  MERGE (rel)-[d2:DOOU_PARA]->(cand)
-  SET d2 = d
-  DELETE d
-  WITH fake
-  WHERE NOT (fake)--()
-  DELETE fake
-}
-"""
+def _build_sq_cpf_map(cand_dir: Path,
+                      eleicoes: list[int] | None = None) -> dict[str, str]:
+    """
+    Lê os CSVs de candidatos e constrói sq_candidato → cpf em memória.
+    Muito mais rápido que resolver via Neo4j depois da carga.
+    """
+    sq_cpf: dict[str, str] = {}
+    todos = sorted(cand_dir.glob("candidatos_*.csv"), key=lambda p: p.stem)
+    if eleicoes:
+        todos = [p for p in todos
+                 if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
+                        for ano in eleicoes)]
+    for path in todos:
+        for chunk in iter_csv(path):
+            for r in chunk:
+                sq  = r.get("SQ_CANDIDATO", "").strip()
+                cpf = _strip_doc(r.get("NR_CPF_CANDIDATO", ""))
+                if sq and cpf and len(cpf) == 11:
+                    sq_cpf[sq] = cpf.zfill(11)
+    log.info(f"  Mapa sq→cpf: {len(sq_cpf):,} candidatos")
+    return sq_cpf
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
@@ -385,27 +394,31 @@ def _load_candidatos(driver, data_dir: Path,
 
 
 def _load_doacoes(driver, data_dir: Path,
+                  sq_cpf: dict[str, str],
                   eleicoes: list[int] | None = None) -> None:
     todos = sorted(data_dir.glob("doacoes_*.csv"))
     if eleicoes:
-        todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
+        todos = [p for p in todos
+                 if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
+                        for ano in eleicoes)]
     if not todos:
         log.warning("  Nenhum arquivo doacoes_*.csv encontrado (verifique --eleicao)")
         return
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
-        pf_t = pj_t = 0
+        pf_t = pj_t = skip_t = 0
         with driver.session() as session:
             for chunk in iter_csv(path):
-                pf, pj = _t_doacoes(chunk)
+                pf, pj = _t_doacoes(chunk, sq_cpf)
+                skip_t += len(chunk) - len(pf) - len(pj)
                 if pf:
                     run_batches(session, Q_DOACAO_PF, pf)
                     pf_t += len(pf)
                 if pj:
                     run_batches(session, Q_DOACAO_PJ, pj)
                     pj_t += len(pj)
-        log.info(f"    ✓ {path.name}  PF={pf_t:,}  PJ={pj_t:,}")
+        log.info(f"    ✓ {path.name}  PF={pf_t:,}  PJ={pj_t:,}  sem_cpf={skip_t:,}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
@@ -434,14 +447,13 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
     log.info("  [1/2] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
     _load_candidatos(driver, cand_dir, eleicoes)
 
-    log.info("  [2/2] Doações → DOOU_PARA...")
-    _load_doacoes(driver, doac_dir, eleicoes)
+    # constrói mapa sq_candidato → cpf em memória antes das doações
+    # resolve o cruzamento em Python — O(1) por doação, sem round-trip Neo4j
+    log.info("  Construindo mapa sq_candidato → cpf...")
+    sq_cpf = _build_sq_cpf_map(cand_dir, eleicoes)
 
-    # liga municípios TSE → nós canônicos IBGE pelo nome
-    log.info("  Linkando doações → candidatos reais...")
-    with driver.session() as session:
-        session.run(Q_LINK_DOACAO_CANDIDATO)
-    log.info("  ✓ doações linkadas")
+    log.info("  [2/2] Doações → DOOU_PARA...")
+    _load_doacoes(driver, doac_dir, sq_cpf, eleicoes)
 
     log.info("  Linkando municípios TSE → IBGE...")
     with driver.session() as session:
