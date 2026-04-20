@@ -13,6 +13,10 @@ Algoritmos executados (em ordem):
   5. Node Similarity → detecta empresas estruturalmente similares
   6. Limpeza da projeção
 
+Labels projetados:
+  Empresa, Pessoa, Partner, Municipio, Estado, Parlamentar,
+  Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao
+
 Propriedades gravadas nos nós:
   gds_comunidade   (Louvain)
   gds_pagerank     (PageRank)
@@ -29,6 +33,7 @@ Uso:
 
 import logging
 from neo4j import GraphDatabase
+from pipeline.lib import IngestionRun
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +60,7 @@ CALL gds.graph.project(
   [
     'Empresa',
     'Pessoa',
+    'Partner',
     'Municipio',
     'Estado',
     'Parlamentar',
@@ -62,21 +68,27 @@ CALL gds.graph.project(
     'Sancao',
     'Servidor',
     'UnidadeGestora',
-    'Partido'
+    'Partido',
+    'Contrato',
+    'Licitacao'
   ],
   {
-    SOCIO_DE:        { orientation: 'UNDIRECTED' },
-    LOCALIZADA_EM:   { orientation: 'NATURAL'    },
-    POSSUI_SANCAO:   { orientation: 'NATURAL'    },
-    AUTORA_DE:       { orientation: 'NATURAL'    },
-    DESTINADA_A:     { orientation: 'NATURAL'    },
-    DOADOR_A:        { orientation: 'NATURAL'    },
-    EH_SERVIDOR:     { orientation: 'NATURAL'    },
-    LOTADO_EM:       { orientation: 'NATURAL'    },
-    CANDIDATO_EM:    { orientation: 'NATURAL'    },
-    FILIADA_A:       { orientation: 'NATURAL'    },
-    PERTENCE_A:      { orientation: 'NATURAL'    },
-    MESMO_QUE:       { orientation: 'UNDIRECTED' }
+    SOCIO_DE:          { orientation: 'UNDIRECTED' },
+    LOCALIZADA_EM:     { orientation: 'NATURAL'    },
+    POSSUI_SANCAO:     { orientation: 'NATURAL'    },
+    AUTORA_DE:         { orientation: 'NATURAL'    },
+    DESTINADA_A:       { orientation: 'NATURAL'    },
+    DOADOR_A:          { orientation: 'NATURAL'    },
+    EH_SERVIDOR:       { orientation: 'NATURAL'    },
+    LOTADO_EM:         { orientation: 'NATURAL'    },
+    CANDIDATO_EM:      { orientation: 'NATURAL'    },
+    FILIADA_A:         { orientation: 'NATURAL'    },
+    PERTENCE_A:        { orientation: 'NATURAL'    },
+    MESMO_QUE:         { orientation: 'UNDIRECTED' },
+    PUBLICOU_LICITACAO:{ orientation: 'NATURAL'    },
+    FIRMOU_CONTRATO:   { orientation: 'NATURAL'    },
+    CONTRATOU:         { orientation: 'NATURAL'    },
+    VINCULADO_A:       { orientation: 'NATURAL'    }
   }
 )
 YIELD graphName, nodeCount, relationshipCount
@@ -135,12 +147,14 @@ RETURN nodesCompared, relationshipsWritten, similarityDistribution
 # ── Índices nos scores GDS ────────────────────────────────────────────────────
 
 Q_INDEXES = [
-    "CREATE INDEX empresa_pagerank    IF NOT EXISTS FOR (e:Empresa)    ON (e.gds_pagerank)",
-    "CREATE INDEX empresa_comunidade  IF NOT EXISTS FOR (e:Empresa)    ON (e.gds_comunidade)",
-    "CREATE INDEX empresa_betweenness IF NOT EXISTS FOR (e:Empresa)    ON (e.gds_betweenness)",
-    "CREATE INDEX pessoa_pagerank     IF NOT EXISTS FOR (p:Pessoa)     ON (p.gds_pagerank)",
-    "CREATE INDEX pessoa_comunidade   IF NOT EXISTS FOR (p:Pessoa)     ON (p.gds_comunidade)",
-    "CREATE INDEX pessoa_betweenness  IF NOT EXISTS FOR (p:Pessoa)     ON (p.gds_betweenness)",
+    "CREATE INDEX empresa_pagerank     IF NOT EXISTS FOR (e:Empresa)     ON (e.gds_pagerank)",
+    "CREATE INDEX empresa_comunidade   IF NOT EXISTS FOR (e:Empresa)     ON (e.gds_comunidade)",
+    "CREATE INDEX empresa_betweenness  IF NOT EXISTS FOR (e:Empresa)     ON (e.gds_betweenness)",
+    "CREATE INDEX pessoa_pagerank      IF NOT EXISTS FOR (p:Pessoa)      ON (p.gds_pagerank)",
+    "CREATE INDEX pessoa_comunidade    IF NOT EXISTS FOR (p:Pessoa)      ON (p.gds_comunidade)",
+    "CREATE INDEX pessoa_betweenness   IF NOT EXISTS FOR (p:Pessoa)      ON (p.gds_betweenness)",
+    "CREATE INDEX partner_pagerank     IF NOT EXISTS FOR (p:Partner)     ON (p.gds_pagerank)",
+    "CREATE INDEX partner_comunidade   IF NOT EXISTS FOR (p:Partner)     ON (p.gds_comunidade)",
     "CREATE INDEX parlamentar_pagerank IF NOT EXISTS FOR (p:Parlamentar) ON (p.gds_pagerank)",
 ]
 
@@ -161,42 +175,47 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info("[gds] Iniciando análise GDS")
     driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
 
-    with driver.session() as session:
+    with IngestionRun(driver, "gds") as run_ctx:
+        with driver.session() as session:
 
-        log.info("  Removendo projeção anterior (se existir)...")
-        session.run(Q_DROP_IF_EXISTS, graph_name=_GRAPH_NAME)
+            log.info("  Removendo projeção anterior (se existir)...")
+            session.run(Q_DROP_IF_EXISTS, graph_name=_GRAPH_NAME)
 
-        log.info(f"  Projetando grafo '{_GRAPH_NAME}' em memória...")
-        record = _run(session, Q_PROJECT, {"graph_name": _GRAPH_NAME})
-        if record:
-            log.info(
-                f"    Nós: {record['nodeCount']:,}  |  "
-                f"Relacionamentos: {record['relationshipCount']:,}"
+            log.info(f"  Projetando grafo '{_GRAPH_NAME}' em memória...")
+            record = _run(session, Q_PROJECT, {"graph_name": _GRAPH_NAME})
+            if record:
+                node_count = record["nodeCount"]
+                log.info(
+                    f"    Nós: {node_count:,}  |  "
+                    f"Relacionamentos: {record['relationshipCount']:,}"
+                )
+                run_ctx.add(rows_in=node_count)
+
+            log.info("  [1/4] Louvain — detectando comunidades...")
+            _run(session, Q_LOUVAIN, {"graph_name": _GRAPH_NAME}, "resultado")
+
+            log.info("  [2/4] PageRank — calculando influência...")
+            _run(session, Q_PAGERANK, {"graph_name": _GRAPH_NAME}, "resultado")
+
+            log.info("  [3/4] Betweenness — identificando intermediários...")
+            _run(session, Q_BETWEENNESS, {"graph_name": _GRAPH_NAME}, "resultado")
+
+            log.info(f"  [4/4] Node Similarity — score >= {_SIMILARITY_CUTOFF}...")
+            r = _run(session, Q_SIMILARITY,
+                     {"graph_name": _GRAPH_NAME, "cutoff": _SIMILARITY_CUTOFF},
+                     "resultado")
+            if r:
+                run_ctx.add(rows_out=r["relationshipsWritten"])
+
+            log.info("  Criando índices nos scores GDS...")
+            for q in Q_INDEXES:
+                session.run(q)
+
+            log.info("  Liberando projeção da memória...")
+            session.run(
+                "CALL gds.graph.drop($graph_name) YIELD graphName",
+                graph_name=_GRAPH_NAME,
             )
-
-        log.info("  [1/4] Louvain — detectando comunidades...")
-        _run(session, Q_LOUVAIN, {"graph_name": _GRAPH_NAME}, "resultado")
-
-        log.info("  [2/4] PageRank — calculando influência...")
-        _run(session, Q_PAGERANK, {"graph_name": _GRAPH_NAME}, "resultado")
-
-        log.info("  [3/4] Betweenness — identificando intermediários...")
-        _run(session, Q_BETWEENNESS, {"graph_name": _GRAPH_NAME}, "resultado")
-
-        log.info(f"  [4/4] Node Similarity — score >= {_SIMILARITY_CUTOFF}...")
-        _run(session, Q_SIMILARITY,
-             {"graph_name": _GRAPH_NAME, "cutoff": _SIMILARITY_CUTOFF},
-             "resultado")
-
-        log.info("  Criando índices nos scores GDS...")
-        for q in Q_INDEXES:
-            session.run(q)
-
-        log.info("  Liberando projeção da memória...")
-        session.run(
-            "CALL gds.graph.drop($graph_name) YIELD graphName",
-            graph_name=_GRAPH_NAME,
-        )
 
     driver.close()
     log.info("[gds] Análise concluída")
