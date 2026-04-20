@@ -31,6 +31,26 @@ services:
       retries: 10
       start_period: 60s
 
+  # ── API ────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_URI:      "bolt://neo4j:7687"
+      NEO4J_USER:     "${NEO4J_USER:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:-changeme}"
+      TZ:             America/Sao_Paulo
+    volumes:
+      - ./api:/app     # hot-reload em desenvolvimento
+
   # ── ETL ────────────────────────────────────────────────────────────────────
   etl:
     build:
