@@ -16,6 +16,19 @@
     docker compose run --rm etl download
     docker compose run --rm etl pipeline
 ```
+#### 2.3. Analytics
+```bash
+    docker compose run --rm etl analytics gds       # GDS: comunidades, PageRank, betweenness
+    docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas *
+```
+> \* Requer `pip install splink duckdb` (ou descomente em `etl/requirements.txt` e rebuilde a imagem)
+
+#### 2.4. Schema e status
+```bash
+    docker compose run --rm etl schema              # aplica constraints + índices + fulltext
+    docker compose run --rm etl ingestion-status    # mostra status dos últimos runs de cada pipeline
+```
+
 #### 100. Limpar o cache do ETL:
 ```bash
     docker compose build --no-cache etl
@@ -36,11 +49,45 @@
 ## 4. acessa o browser do Neo4j
 * http://localhost:7474   (usuário: neo4j / senha: changeme)
 
+### Busca fulltext
+Após a carga, use o índice `entidade_busca` para busca livre sobre todos os tipos de entidade:
+```cypher
+CALL db.index.fulltext.queryNodes('entidade_busca', 'Marco Feliciano')
+YIELD node, score
+RETURN labels(node), node.nome, score ORDER BY score DESC LIMIT 10
+```
+
+### Status dos pipelines
+```cypher
+MATCH (r:IngestionRun)
+WITH r.source_id AS source, max(r.started_at) AS last
+MATCH (r:IngestionRun {source_id: source, started_at: last})
+RETURN source, r.status, r.rows_in, r.rows_out, r.started_at
+ORDER BY source
+```
+
 ## Arquitetura
 | Camada | Tecnologia |
 | :--- | :---: |
-| Banco de Grafo | Neo4j 5 Community |
+| Banco de Grafo | Neo4j 5 Community + GDS |
 | Backend | FastAPI (Python 3.12+, async) |
 | Frontend | * |
-| ETL | Python (pandas) |
+| ETL | Python (pandas, splink opcional) |
 | Infra | Docker Compose |
+
+## Features
+
+### Identidade Parcial (`:Partner`)
+Sócios CNPJ com CPF mascarado (ex: `***.039.886-**`) não são descartados. Viram nós `:Partner` com `partner_id` estável (SHA-256 do nome+dígitos visíveis) e relação `SOCIO_DE → :Empresa`. Quando o CPF completo estiver disponível em outra fonte, basta criar `MESMO_QUE` entre `:Partner` e `:Pessoa`.
+
+### Auditoria (`:IngestionRun`)
+Todo pipeline registra um nó de auditoria com status (`running` / `loaded` / `quality_fail`), timestamps, contagem de linhas e erro (se houver). Visível no browser do Neo4j ou via `ingestion-status`.
+
+### Fulltext Search nativo
+Índice `entidade_busca` cobre 12 labels e 14 propriedades — busca livre sem Elasticsearch.
+
+### Deduplicação probabilística (Splink)
+Detecta pessoas duplicadas entre fontes usando Jaro-Winkler + exact match em CPF/data de nascimento. Cria `(:Pessoa)-[:MESMO_QUE {score, confianca}]->(:Pessoa)` para pares acima de 0.8 de probabilidade.
+
+### Linking fuzzy Parlamentar ↔ TSE
+Resolve nomes abreviados como "PR. MARCO FELICIANO" → CPF do candidato TSE usando match em cascata: exact → normalized → token subset. Só vincula quando há CPF único (sem ambiguidade).
