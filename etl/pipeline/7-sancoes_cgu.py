@@ -23,7 +23,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -228,16 +228,18 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(f"[sancoes_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    for dataset, tipo in [("ceis", "CEIS"), ("cnep", "CNEP")]:
-        path = DATA_DIR / f"{dataset}.csv"
-        log.info(f"  [{tipo}]...")
-        _load_dataset(driver, path, tipo)
+    with IngestionRun(driver, "sancoes_cgu"):
+        for dataset, tipo in [("ceis", "CEIS"), ("cnep", "CNEP")]:
+            path = DATA_DIR / f"{dataset}.csv"
+            log.info(f"  [{tipo}]...")
+            _load_dataset(driver, path, tipo)
 
     driver.close()
     log.info("[sancoes_cgu] Pipeline concluído")

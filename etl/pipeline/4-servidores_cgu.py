@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -244,27 +244,31 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
     log.info(f"  Períodos: {len(periodos)}  {periodos[:5]}{'...' if len(periodos)>5 else ''}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    for ano, mes in periodos:
-        mes_dir  = DATA_DIR / str(ano) / f"{mes:02d}"
-        cad_path = mes_dir / "cadastro.csv"
-        rem_path = mes_dir / "remuneracao.csv"
-        log.info(f"  === {ano}/{mes:02d} ===")
+    with IngestionRun(driver, "servidores_cgu") as run_ctx:
+        for ano, mes in periodos:
+            mes_dir  = DATA_DIR / str(ano) / f"{mes:02d}"
+            cad_path = mes_dir / "cadastro.csv"
+            rem_path = mes_dir / "remuneracao.csv"
+            log.info(f"  === {ano}/{mes:02d} ===")
 
-        if cad_path.exists():
-            log.info("  [cadastro]...")
-            n = _load_cadastro(driver, cad_path)
-            log.info(f"    ✓ {n:,} servidores")
+            if cad_path.exists():
+                log.info("  [cadastro]...")
+                n = _load_cadastro(driver, cad_path)
+                run_ctx.add(n)
+                log.info(f"    ✓ {n:,} servidores")
 
-        if rem_path.exists():
-            log.info("  [remuneracao]...")
-            n = _load_remuneracao(driver, rem_path)
-            log.info(f"    ✓ {n:,} registros")
+            if rem_path.exists():
+                log.info("  [remuneracao]...")
+                n = _load_remuneracao(driver, rem_path)
+                run_ctx.add(n)
+                log.info(f"    ✓ {n:,} registros")
 
     driver.close()
     log.info("[servidores] Pipeline concluído")

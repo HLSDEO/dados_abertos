@@ -25,7 +25,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches
+from pipeline.lib import wait_for_neo4j, run_batches, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -261,46 +261,47 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
         return
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    # ordem: Esfera → Orgao → UnidadeGestora → vínculos geográficos
-    log.info("  [1/5] Esferas administrativas...")
-    with driver.session() as session:
-        run_batches(session, Q_ESFERA, rows)
-    log.info(f"    ✓ {len(set(r.get('id_esfera','') for r in rows))} esferas")
-
-    log.info("  [2/5] Órgãos...")
-    with driver.session() as session:
-        run_batches(session, Q_ORGAO, rows)
-    log.info(f"    ✓ {len(set(r.get('id_orgao','') for r in rows))} órgãos")
-
-    log.info("  [3/5] Unidades gestoras...")
-    with driver.session() as session:
-        run_batches(session, Q_UASG, rows)
-    log.info(f"    ✓ {len(rows):,} unidades gestoras")
-
-    # vínculos geográficos — só para linhas com nome extraído
-    rows_estaduais = [r for r in rows if r.get("nome_estado")]
-    if rows_estaduais:
-        log.info(f"  [4/5] Vinculando {len(rows_estaduais):,} órgãos → :Estado...")
+    with IngestionRun(driver, "siafi") as run_ctx:
+        # ordem: Esfera → Orgao → UnidadeGestora → vínculos geográficos
+        log.info("  [1/5] Esferas administrativas...")
         with driver.session() as session:
-            run_batches(session, Q_ORGAO_ESTADO, rows_estaduais)
-    else:
-        log.info("  [4/5] Nenhum órgão estadual para vincular")
+            run_batches(session, Q_ESFERA, rows)
+        log.info(f"    ✓ {len(set(r.get('id_esfera','') for r in rows))} esferas")
 
-    rows_municipais = [r for r in rows if r.get("nome_municipio")]
-    if rows_municipais:
-        log.info(f"  [5/5] Vinculando {len(rows_municipais):,} UASGs → :Municipio...")
-        # batch menor para evitar deadlock — muitas UASGs apontam para o mesmo :Municipio
+        log.info("  [2/5] Órgãos...")
         with driver.session() as session:
-            run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
-                         batch_override=100)
-    else:
-        log.info("  [5/5] Nenhuma UASG municipal para vincular")
+            run_batches(session, Q_ORGAO, rows)
+        log.info(f"    ✓ {len(set(r.get('id_orgao','') for r in rows))} órgãos")
+
+        log.info("  [3/5] Unidades gestoras...")
+        with driver.session() as session:
+            run_batches(session, Q_UASG, rows)
+        log.info(f"    ✓ {len(rows):,} unidades gestoras")
+        run_ctx.add(len(rows))
+
+        rows_estaduais = [r for r in rows if r.get("nome_estado")]
+        if rows_estaduais:
+            log.info(f"  [4/5] Vinculando {len(rows_estaduais):,} órgãos → :Estado...")
+            with driver.session() as session:
+                run_batches(session, Q_ORGAO_ESTADO, rows_estaduais)
+        else:
+            log.info("  [4/5] Nenhum órgão estadual para vincular")
+
+        rows_municipais = [r for r in rows if r.get("nome_municipio")]
+        if rows_municipais:
+            log.info(f"  [5/5] Vinculando {len(rows_municipais):,} UASGs → :Municipio...")
+            with driver.session() as session:
+                run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
+                             batch_override=100)
+        else:
+            log.info("  [5/5] Nenhuma UASG municipal para vincular")
 
     driver.close()
     log.info("[siafi] Pipeline concluído")

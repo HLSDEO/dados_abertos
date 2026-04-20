@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +111,7 @@ Q_CANDIDATO = """
 UNWIND $rows AS r
 MERGE (p:Pessoa {cpf: r.cpf})
   ON CREATE SET p.nome                  = r.nm_candidato,
+                p.nome_urna             = r.nm_urna,
                 p.nr_titulo_eleitoral   = r.nr_titulo,
                 p.dt_nascimento         = r.dt_nascimento,
                 p.ds_genero             = r.ds_genero,
@@ -120,6 +121,7 @@ MERGE (p:Pessoa {cpf: r.cpf})
                 p.sg_uf_nascimento      = r.sg_uf_nascimento,
                 p.fonte_nome            = r.fonte_nome
   ON MATCH  SET p.nome                  = coalesce(p.nome, r.nm_candidato),
+                p.nome_urna             = coalesce(p.nome_urna, r.nm_urna),
                 p.nr_titulo_eleitoral   = coalesce(p.nr_titulo_eleitoral, r.nr_titulo)
 WITH p, r
 MATCH (e:Eleicao {eleicao_id: r.eleicao_id})
@@ -435,30 +437,30 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
     )
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    cand_dir = DATA_DIR / "candidatos"
-    doac_dir = DATA_DIR / "doacoes"
+    with IngestionRun(driver, "tse"):
+        cand_dir = DATA_DIR / "candidatos"
+        doac_dir = DATA_DIR / "doacoes"
 
-    log.info("  [1/2] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
-    _load_candidatos(driver, cand_dir, eleicoes)
+        log.info("  [1/2] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
+        _load_candidatos(driver, cand_dir, eleicoes)
 
-    # constrói mapa sq_candidato → cpf em memória antes das doações
-    # resolve o cruzamento em Python — O(1) por doação, sem round-trip Neo4j
-    log.info("  Construindo mapa sq_candidato → cpf...")
-    sq_cpf = _build_sq_cpf_map(cand_dir, eleicoes)
+        log.info("  Construindo mapa sq_candidato → cpf...")
+        sq_cpf = _build_sq_cpf_map(cand_dir, eleicoes)
 
-    log.info("  [2/2] Doações → DOOU_PARA...")
-    _load_doacoes(driver, doac_dir, sq_cpf, eleicoes)
+        log.info("  [2/2] Doações → DOOU_PARA...")
+        _load_doacoes(driver, doac_dir, sq_cpf, eleicoes)
 
-    log.info("  Linkando municípios TSE → IBGE...")
-    with driver.session() as session:
-        session.run(Q_LINK_MUNICIPIO_TSE_IBGE)
-    log.info("  ✓ municípios linkados")
+        log.info("  Linkando municípios TSE → IBGE...")
+        with driver.session() as session:
+            session.run(Q_LINK_MUNICIPIO_TSE_IBGE)
+        log.info("  ✓ municípios linkados")
 
     driver.close()
     log.info("[tse] Pipeline concluído")

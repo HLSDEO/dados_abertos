@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches
+from pipeline.lib import wait_for_neo4j, run_batches, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -439,17 +439,19 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(f"[pncp] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    log.info("  [1/2] Licitações/Editais...")
-    _load_editais(driver)
+    with IngestionRun(driver, "pncp"):
+        log.info("  [1/2] Licitações/Editais...")
+        _load_editais(driver)
 
-    log.info("  [2/2] Contratos...")
-    _load_contratos(driver)
+        log.info("  [2/2] Contratos...")
+        _load_contratos(driver)
 
     driver.close()
     log.info("[pncp] Pipeline concluído")

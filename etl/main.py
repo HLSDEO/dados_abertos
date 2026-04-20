@@ -16,6 +16,9 @@ Uso:
   python main.py run cnpj --full                           # download + pipeline + analytics
   python main.py analytics                                 # só analytics (tudo)
   python main.py analytics gds                             # só o GDS
+  python main.py analytics splink                          # deduplicação probabilística
+  python main.py schema                                    # aplica constraints + índices + fulltext
+  python main.py ingestion-status                          # mostra status dos últimos runs
 
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
@@ -95,7 +98,8 @@ PIPELINES = {
 }
 
 ANALYTICS = {
-    "gds": "analytics/1-gds.py",
+    "gds":    "analytics/1-gds.py",
+    "splink": "analytics/2-splink.py",
 }
 
 
@@ -288,8 +292,47 @@ def main():
             log.info("=== [--full] executando analytics após pipeline ===")
             do_analytics(list(ANALYTICS), opts)
 
+    elif command == "schema":
+        # Aplica constraints, índices e fulltext index sem carregar dados
+        from pipeline.lib import wait_for_neo4j, setup_schema
+        driver = wait_for_neo4j(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+        setup_schema(driver)
+        driver.close()
+        log.info("=== Schema aplicado ===")
+
+    elif command == "ingestion-status":
+        # Mostra status das últimas execuções de cada pipeline
+        from pipeline.lib import wait_for_neo4j
+        driver = wait_for_neo4j(NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)
+        with driver.session() as s:
+            result = s.run("""
+                MATCH (r:IngestionRun)
+                WITH r.source_id AS source, max(r.started_at) AS last_run
+                MATCH (r:IngestionRun {source_id: source, started_at: last_run})
+                RETURN source, r.status AS status, r.started_at AS started,
+                       r.finished_at AS finished, r.rows_in AS rows_in,
+                       r.rows_out AS rows_out, r.error AS error
+                ORDER BY source
+            """)
+            rows = list(result)
+        if not rows:
+            log.info("Nenhum IngestionRun encontrado — rode pipelines primeiro")
+        else:
+            log.info("=== Status dos pipelines ===")
+            for r in rows:
+                err = f"  ERROR={r['error'][:80]}" if r.get("error") else ""
+                log.info(
+                    f"  {r['source']:<25} {r['status']:<15} "
+                    f"in={r['rows_in'] or 0:>10,}  out={r['rows_out'] or 0:>10,}  "
+                    f"started={r['started']}{err}"
+                )
+        driver.close()
+
     else:
-        log.error(f"Comando inválido: '{command}'. Use: download | pipeline | analytics | run")
+        log.error(
+            f"Comando inválido: '{command}'. "
+            "Use: download | pipeline | analytics | run | schema | ingestion-status"
+        )
         sys.exit(1)
 
 

@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 
 from neo4j import GraphDatabase
+from pipeline.lib import IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -125,24 +126,27 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info("[ibge] Iniciando pipeline → Neo4j")
 
     driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
+    setup_schema(driver)
 
-    with driver.session() as session:
-        log.info("  Criando constraints...")
-        for q in Q_CONSTRAINTS:
-            session.run(q)
+    with IngestionRun(driver, "ibge") as run_ctx:
+        with driver.session() as session:
+            log.info("  Criando constraints...")
+            for q in Q_CONSTRAINTS:
+                session.run(q)
 
-        steps = [
-            ("regioes",       Q_REGIOES),
-            ("estados",       Q_ESTADOS),
-            ("mesorregioes",  Q_MESORREGIOES),
-            ("microrregioes", Q_MICRORREGIOES),
-            ("municipios",    Q_MUNICIPIOS),
-        ]
+            steps = [
+                ("regioes",       Q_REGIOES),
+                ("estados",       Q_ESTADOS),
+                ("mesorregioes",  Q_MESORREGIOES),
+                ("microrregioes", Q_MICRORREGIOES),
+                ("municipios",    Q_MUNICIPIOS),
+            ]
 
-        for name, query in steps:
-            rows = _read_csv(name)
-            log.info(f"  Carregando {name}...")
-            _run_batch(session, query, rows)
+            for name, query in steps:
+                rows = _read_csv(name)
+                log.info(f"  Carregando {name}...")
+                _run_batch(session, query, rows)
+                run_ctx.add(len(rows))
 
     driver.close()
     log.info("[ibge] Pipeline concluído")

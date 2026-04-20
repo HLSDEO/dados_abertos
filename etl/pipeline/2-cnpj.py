@@ -13,7 +13,10 @@ Estratégias de otimização para volumes grandes (70+ GB de CSV):
    Menos round-trips rede/disco por chunk.
 4. Índices e constraints antes da carga, não depois
 5. Simples adicionado: enriquece :Empresa com opcao_simples/mei
-Nós:  (:Empresa) (:Pessoa) (:Municipio) (:Pais)
+6. Identidade parcial: sócios com CPF mascarado → nó :Partner
+   em vez de `:Pessoa {cpf: "DESCONHECIDO_..."}` ou descarte silencioso.
+   partner_id = SHA-256(nome|doc_digits|doc_raw|tipo|rfb)[:16]
+Nós:  (:Empresa) (:Pessoa) (:Partner) (:Municipio) (:Pais)
 Rels: SOCIO_DE, LOCALIZADA_EM
 """
 import csv
@@ -23,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 import random
 from neo4j import GraphDatabase
+from pipeline.lib import classify_doc, make_partner_id, IngestionRun, setup_schema
 log = logging.getLogger(__name__)
 DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
 CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "20000"))  # linhas lidas do CSV por vez
@@ -97,17 +101,21 @@ def _load_domain_tables(csv_dir: Path) -> dict[str, dict[str, str]]:
 Q_CONSTRAINTS = [
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Empresa)   REQUIRE n.cnpj_basico IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Pessoa)    REQUIRE n.cpf IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Partner)   REQUIRE n.partner_id IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Municipio) REQUIRE n.id IS UNIQUE",
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Pais)      REQUIRE n.codigo IS UNIQUE",
     # constraint em codigo_rf torna o MERGE em Q_ESTABELECIMENTO_UPDATE O(1) em vez de full scan
     "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Municipio) REQUIRE n.codigo_rf IS UNIQUE",
 ]
 Q_INDEXES = [
-    "CREATE INDEX empresa_razao IF NOT EXISTS FOR (e:Empresa) ON (e.razao_social)",
-    "CREATE INDEX empresa_cnpj  IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
-    "CREATE INDEX empresa_uf    IF NOT EXISTS FOR (e:Empresa) ON (e.uf)",
-    "CREATE INDEX empresa_sit   IF NOT EXISTS FOR (e:Empresa) ON (e.situacao_cadastral)",
-    "CREATE INDEX pessoa_nome   IF NOT EXISTS FOR (p:Pessoa)  ON (p.nome)",
+    "CREATE INDEX empresa_razao     IF NOT EXISTS FOR (e:Empresa) ON (e.razao_social)",
+    "CREATE INDEX empresa_cnpj      IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
+    "CREATE INDEX empresa_uf        IF NOT EXISTS FOR (e:Empresa) ON (e.uf)",
+    "CREATE INDEX empresa_sit       IF NOT EXISTS FOR (e:Empresa) ON (e.situacao_cadastral)",
+    "CREATE INDEX pessoa_nome       IF NOT EXISTS FOR (p:Pessoa)  ON (p.nome)",
+    "CREATE INDEX partner_nome      IF NOT EXISTS FOR (p:Partner) ON (p.nome)",
+    "CREATE INDEX partner_doc       IF NOT EXISTS FOR (p:Partner) ON (p.doc_partial)",
+    "CREATE INDEX partner_nome_doc  IF NOT EXISTS FOR (p:Partner) ON (p.nome, p.doc_partial)",
 ]
 # ── Queries Cypher ────────────────────────────────────────────────────────────
 # Usa MERGE com SET para ser idempotente (pode rodar múltiplas vezes)
@@ -195,6 +203,30 @@ MERGE (p:Pessoa {cpf: r.id_estrangeiro})
 WITH p, r
 MATCH (e:Empresa {cnpj_basico: r.cnpj_basico})
 MERGE (p)-[s:SOCIO_DE]->(e)
+SET s.qualificacao   = r.qualificacao,
+    s.data_entrada   = r.data_entrada,
+    s.tipo           = r.tipo,
+    s.fonte_snapshot = r.fonte_snapshot
+"""
+
+# Sócio PF com CPF mascarado/inválido → identidade parcial
+Q_PARTNER = """
+UNWIND $rows AS r
+MERGE (p:Partner {partner_id: r.partner_id})
+SET p.nome          = r.nome,
+    p.doc_raw       = r.doc_raw,
+    p.doc_partial   = r.doc_partial,
+    p.doc_tipo      = r.doc_tipo,
+    p.tipo_socio    = r.tipo_socio,
+    p.qualidade_id  = r.qualidade_id,
+    p.fonte         = r.fonte
+"""
+
+Q_PARTNER_SOCIO_DE = """
+UNWIND $rows AS r
+MATCH  (p:Partner  {partner_id:  r.partner_id})
+MATCH  (e:Empresa  {cnpj_basico: r.cnpj_basico})
+MERGE  (p)-[s:SOCIO_DE]->(e)
 SET s.qualificacao   = r.qualificacao,
     s.data_entrada   = r.data_entrada,
     s.tipo           = r.tipo,
@@ -289,10 +321,19 @@ def _t_simples(chunk: list[dict]) -> list[dict]:
             "data_exclusao_mei":    r.get("data_exclusao_mei", "").strip(),
         })
     return out
-def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], list[dict]]:
+def _t_socios(chunk: list[dict], tables: dict
+              ) -> tuple[list[dict], list[dict], list[dict], list[dict], list[dict]]:
+    """
+    Classifica sócios em 5 listas:
+      pf_rows     — PF com CPF válido → :Pessoa
+      pj_rows     — PJ → :Empresa sócia
+      ext_rows    — Estrangeiro → :Pessoa estrangeira
+      part_rows   — PF com CPF mascarado/inválido → :Partner (identidade parcial)
+      part_rels   — relacionamentos :Partner -[SOCIO_DE]-> :Empresa
+    """
     qual_lkp = tables.get("qualificacoes", {})
     pais_lkp = tables.get("paises", {})
-    pf_rows, pj_rows, ext_rows = [], [], []
+    pf_rows, pj_rows, ext_rows, part_rows, part_rels = [], [], [], [], []
     for r in chunk:
         basico   = r.get("cnpj_basico", "").strip().zfill(8)
         tipo     = r.get("identificador_socio", "").strip()
@@ -300,19 +341,36 @@ def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], 
         doc_raw  = r.get("cpf_cnpj_socio", "").strip()
         qual_cod = r.get("qualificacao_socio", "").strip()
         doc_d    = _strip_doc(doc_raw)
+        qual_desc = qual_lkp.get(qual_cod, qual_cod)
         base = {
             "cnpj_basico":    basico,
-            "qualificacao":   qual_lkp.get(qual_cod, qual_cod),
+            "qualificacao":   qual_desc,
             "data_entrada":   r.get("data_entrada", "").strip(),
             "tipo":           tipo,
             "fonte_snapshot": r.get("fonte_snapshot", ""),
         }
         if tipo == "2":
-            pf_rows.append({**base,
-                "cpf":         doc_d.zfill(11) if doc_d else f"DESCONHECIDO_{nome[:20]}",
-                "nome":        nome,
-                "faixa_etaria":r.get("faixa_etaria", "").strip(),
-            })
+            doc_class = classify_doc(doc_raw)
+            if doc_class == "cpf_valid":
+                pf_rows.append({**base,
+                    "cpf":          doc_d.zfill(11),
+                    "nome":         nome,
+                    "faixa_etaria": r.get("faixa_etaria", "").strip(),
+                })
+            else:
+                # CPF mascarado (ex: "***839.8**-**") ou inválido → identidade parcial
+                pid = make_partner_id(nome, doc_raw, tipo, "rfb")
+                part_rows.append({
+                    "partner_id":  pid,
+                    "nome":        nome,
+                    "doc_raw":     doc_raw,
+                    "doc_partial": doc_d[:6] if doc_class == "cpf_partial" else "",
+                    "doc_tipo":    doc_class,
+                    "tipo_socio":  tipo,
+                    "qualidade_id": "partial" if doc_class == "cpf_partial" else "unknown",
+                    "fonte":       "rfb",
+                })
+                part_rels.append({**base, "partner_id": pid})
         elif tipo == "1":
             cnpj_soc = doc_d[:8].zfill(8) if len(doc_d) >= 8 else ""
             if cnpj_soc:
@@ -326,7 +384,7 @@ def _t_socios(chunk: list[dict], tables: dict) -> tuple[list[dict], list[dict], 
                 "pais_nome":      pais_lkp.get(pais_cod, pais_cod),
                 "faixa_etaria":   r.get("faixa_etaria", "").strip(),
             })
-    return pf_rows, pj_rows, ext_rows
+    return pf_rows, pj_rows, ext_rows, part_rows, part_rels
 # ── Loader de batches com retry em deadlock ───────────────────────────────────
 def _run_batches(session, query: str, rows: list[dict], extra_params: dict = None,
                  retries: int = 5) -> None:
@@ -391,12 +449,12 @@ def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [simples] {total:,} linhas inseridas...")
     log.info(f"    [simples] ✓ {total:,}")
-def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
+def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> int:
     path = csv_dir / "socios.csv"
-    pf_t = pj_t = ext_t = 0
+    pf_t = pj_t = ext_t = part_t = 0
     with driver.session() as session:
         for chunk in _iter_csv(path):
-            pf, pj, ext = _t_socios(chunk, tables)
+            pf, pj, ext, part_nodes, part_rels = _t_socios(chunk, tables)
             if pf:
                 _run_batches(session, Q_SOCIO_PF, pf)
                 pf_t += len(pf)
@@ -406,10 +464,18 @@ def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
             if ext:
                 _run_batches(session, Q_SOCIO_EXT, ext)
                 ext_t += len(ext)
-            total = pf_t + pj_t + ext_t
+            if part_nodes:
+                _run_batches(session, Q_PARTNER, part_nodes)
+                _run_batches(session, Q_PARTNER_SOCIO_DE, part_rels)
+                part_t += len(part_nodes)
+            total = pf_t + pj_t + ext_t + part_t
             if total % _LOG_EVERY < CHUNK_SIZE:
-                log.info(f"    [socios] {total:,} (PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,})...")
-    log.info(f"    [socios] ✓ PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,}")
+                log.info(
+                    f"    [socios] {total:,} "
+                    f"(PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,} partner={part_t:,})..."
+                )
+    log.info(f"    [socios] ✓ PF={pf_t:,} PJ={pj_t:,} ext={ext_t:,} partner={part_t:,}")
+    return pf_t + pj_t + ext_t + part_t
 # ── Espera Neo4j ficar pronto ─────────────────────────────────────────────────
 def _wait_for_neo4j(uri: str, user: str, password: str,
                     retries: int = 20, delay: float = 5.0) -> "Driver":
@@ -445,28 +511,32 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
     else:
         log.info(f"  Histórico: {len(snapshots)} snapshots")
     driver = _wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
-    # ── constraints + índices (antes da carga) ────────────────────────────────
+    # ── constraints + índices + fulltext (antes da carga) ─────────────────────
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
-    for snapshot, csv_dir in snapshots:
-        log.info(f"  === Snapshot {snapshot} ===")
-        tables = _load_domain_tables(csv_dir)
-        log.info("  [1/3] Empresas (sequencial — cria nós base)...")
-        _load_empresas(driver, csv_dir, tables, snapshot)
-        log.info("  [2/3] Simples (sequencial — enriquece Empresa)...")
-        _load_simples(driver, csv_dir, snapshot)
-        log.info("  [3/4] Estabelecimentos (sequencial)...")
-        _load_estabelecimentos(driver, csv_dir, tables, snapshot)
-        log.info("  [4/4] Sócios (sequencial)...")
-        _load_socios(driver, csv_dir, tables, snapshot)
-        # ── liga municípios RF → nós canônicos IBGE via MESMO_QUE ─────────
-        log.info("  Linkando municípios RF → IBGE via MESMO_QUE...")
-        with driver.session() as session:
-            with session.begin_transaction() as tx:
-                tx.run(Q_LINK_MUNICIPIO_IBGE)
-                tx.commit()
-        log.info("  ✓ municípios linkados")
+    setup_schema(driver)
+
+    with IngestionRun(driver, "cnpj") as run_ctx:
+        for snapshot, csv_dir in snapshots:
+            log.info(f"  === Snapshot {snapshot} ===")
+            tables = _load_domain_tables(csv_dir)
+            log.info("  [1/4] Empresas (sequencial — cria nós base)...")
+            _load_empresas(driver, csv_dir, tables, snapshot)
+            log.info("  [2/4] Simples (sequencial — enriquece Empresa)...")
+            _load_simples(driver, csv_dir, snapshot)
+            log.info("  [3/4] Estabelecimentos (sequencial)...")
+            _load_estabelecimentos(driver, csv_dir, tables, snapshot)
+            log.info("  [4/4] Sócios (sequencial)...")
+            total_socios = _load_socios(driver, csv_dir, tables, snapshot)
+            run_ctx.add(rows_out=total_socios)
+            # ── liga municípios RF → nós canônicos IBGE via MESMO_QUE ─────
+            log.info("  Linkando municípios RF → IBGE via MESMO_QUE...")
+            with driver.session() as session:
+                with session.begin_transaction() as tx:
+                    tx.run(Q_LINK_MUNICIPIO_IBGE)
+                    tx.commit()
+            log.info("  ✓ municípios linkados")
     driver.close()
     log.info("[cnpj] Pipeline concluído")

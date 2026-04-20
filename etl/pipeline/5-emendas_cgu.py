@@ -25,10 +25,12 @@ Relacionamentos:
 import csv
 import logging
 import os
+import re
+import unicodedata
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches, iter_csv
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -182,6 +184,68 @@ MERGE (emp:Empresa {cnpj_basico: r.cnpj_favorecido})
 MERGE (d)-[:PAGO_A]->(emp)
 """
 
+# ── Resolução fuzzy de nomes ──────────────────────────────────────────────────
+# Parlamentares no CGU usam abreviações ("PR.", "DEP.") e nomes de urna que
+# diferem do nome civil registrado no TSE.  Estratégias em ordem de confiança:
+#   1. Exact match (nome completo ou nome de urna)
+#   2. Normalized exact (sem acentos e sem títulos)
+#   3. Token subset: todos os tokens do parlamentar estão nos tokens do candidato
+#   4. Reverse subset: todos os tokens do candidato estão nos tokens do parlamentar
+# Em qualquer caso, só vincula quando há exatamente um CPF correspondente.
+
+_TITULOS_RE = re.compile(
+    r'\b(PR|DEP|SEN|VER|DR|DRA|ENG|PROF|CEL|GEN|BRG|CAP|TEN|SGT|SD)\b\.?',
+    re.IGNORECASE,
+)
+
+
+def _norm_tokens(name: str) -> frozenset[str]:
+    """Remove acentos, títulos parlamentares e pontuação; retorna frozenset de tokens ≥ 3 chars."""
+    sem_acento = unicodedata.normalize("NFD", name)
+    sem_acento = "".join(c for c in sem_acento if unicodedata.category(c) != "Mn")
+    sem_titulo = _TITULOS_RE.sub("", sem_acento).upper()
+    sem_pontos = re.sub(r"[^A-Z\s]", "", sem_titulo)
+    return frozenset(t for t in sem_pontos.split() if len(t) >= 3)
+
+
+def _resolve_cpf(nome_autor: str,
+                 exact_map: dict[str, str],
+                 cand_tokens: list[tuple[frozenset, str]]) -> str:
+    """
+    Resolve nome de parlamentar → CPF usando match em cascata.
+    Retorna "" se não encontrar ou se ambíguo.
+    """
+    nome_up = nome_autor.strip().upper()
+
+    # 1. exact
+    if nome_up in exact_map:
+        return exact_map[nome_up]
+
+    # 2. normalized exact (só acentos e títulos removidos)
+    parl_tokens = _norm_tokens(nome_autor)
+    if not parl_tokens:
+        return ""
+    norm_key = " ".join(sorted(parl_tokens))
+    if norm_key in exact_map:
+        return exact_map[norm_key]
+
+    # 3. subset: tokens do parlamentar ⊆ tokens do candidato  (nome abreviado CGU)
+    matches = {cpf for toks, cpf in cand_tokens if parl_tokens <= toks}
+    if len(matches) == 1:
+        return next(iter(matches))
+
+    # 4. reverse subset: tokens do candidato ⊆ tokens do parlamentar  (nome urna curto)
+    if not matches:
+        matches = {cpf for toks, cpf in cand_tokens
+                   if toks <= parl_tokens and len(toks) >= 2}
+        if len(matches) == 1:
+            return next(iter(matches))
+
+    if len(matches) > 1:
+        log.debug(f"  Ambíguo: '{nome_autor}' → {len(matches)} candidatos, pulando")
+    return ""
+
+
 # Link parlamentar → pessoa resolvido em Python via dicionário nome→cpf
 # carregado dos CSVs de candidatos TSE — evita full scan em 30M :Pessoa
 Q_LINK_PARLAMENTAR_PESSOA = """
@@ -194,33 +258,43 @@ MERGE (par)-[:MESMO_QUE]->(p)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _build_nome_cpf_map(driver) -> dict[str, str]:
+def _build_nome_cpf_map(driver) -> tuple[dict[str, str], list[tuple[frozenset, str]]]:
     """
-    Consulta o Neo4j para construir nome_autor → cpf a partir dos
-    candidatos TSE já carregados no grafo.
-    Muito mais rápido que ler CSVs — o grafo já tem o cruzamento pronto.
-    Retorna dict vazio se TSE não estiver carregado.
+    Constrói dois índices de resolução nome → CPF a partir dos candidatos TSE no grafo.
+    Retorna (exact_map, cand_tokens_list).
+      exact_map       : nome_upper → cpf  (match exato)
+      cand_tokens_list: [(frozenset_tokens, cpf), ...]  (match por subconjunto)
+    Ambos vazios se TSE não estiver carregado.
     """
-    nome_cpf: dict[str, str] = {}
+    exact_map:   dict[str, str]              = {}
+    cand_tokens: list[tuple[frozenset, str]] = []
     try:
         with driver.session() as session:
+            # coalesce garante que nome_urna funcione mesmo em grafos gerados
+            # antes do fix que passou a salvar o campo no nó :Pessoa
             result = session.run("""
-                MATCH (p:Pessoa)-[:CANDIDATO_EM]->()
+                MATCH (p:Pessoa)-[c:CANDIDATO_EM]->()
                 WHERE p.cpf IS NOT NULL AND p.nome IS NOT NULL
-                RETURN p.cpf AS cpf, p.nome AS nome,
-                       p.nome_urna AS nome_urna
+                WITH p, collect(c.nm_urna)[0] AS nm_urna_rel
+                RETURN p.cpf      AS cpf,
+                       p.nome     AS nome,
+                       coalesce(p.nome_urna, nm_urna_rel) AS nome_urna
             """)
             for rec in result:
                 cpf = rec["cpf"]
                 if not cpf or len(cpf) != 11:
                     continue
                 for campo in (rec["nome"], rec["nome_urna"]):
-                    if campo:
-                        nome_cpf.setdefault(campo.strip().upper(), cpf)
-        log.info(f"  Mapa nome→cpf (grafo TSE): {len(nome_cpf):,} entradas")
+                    if not campo:
+                        continue
+                    exact_map.setdefault(campo.strip().upper(), cpf)
+                    toks = _norm_tokens(campo)
+                    if toks:
+                        cand_tokens.append((toks, cpf))
+        log.info(f"  Índice TSE: {len(exact_map):,} exact  {len(cand_tokens):,} token-sets")
     except Exception as exc:
-        log.warning(f"  Não foi possível construir mapa nome→cpf: {exc}")
-    return nome_cpf
+        log.warning(f"  Não foi possível construir índice nome→cpf: {exc}")
+    return exact_map, cand_tokens
 
 
 def _safe_float(s: str) -> str:
@@ -439,43 +513,53 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(f"[emendas_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
+    setup_schema(driver)
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
-    log.info("  [1/4] Emendas, parlamentares, funções...")
-    _load_emendas(driver)
+    with IngestionRun(driver, "emendas_cgu"):
+        log.info("  [1/4] Emendas, parlamentares, funções...")
+        _load_emendas(driver)
 
-    log.info("  [2/4] Convênios...")
-    _load_convenios(driver)
+        log.info("  [2/4] Convênios...")
+        _load_convenios(driver)
 
-    log.info("  [3/4] Por favorecido...")
-    _load_por_favorecido(driver)
+        log.info("  [3/4] Por favorecido...")
+        _load_por_favorecido(driver)
 
-    log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
-    nome_cpf = _build_nome_cpf_map(driver)
-    if nome_cpf:
-        # resolve em Python — evita full scan em 30M :Pessoa
-        link_rows = []
-        with driver.session() as session:
-            result = session.run(
-                "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
-            )
-            for rec in result:
-                nome_up = (rec["nome"] or "").strip().upper()
-                cpf = nome_cpf.get(nome_up, "")
-                if cpf:
-                    link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
-        if link_rows:
+        log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
+        exact_map, cand_tokens = _build_nome_cpf_map(driver)
+        if exact_map or cand_tokens:
+            link_rows = []
+            ambiguous = missed = 0
             with driver.session() as session:
-                run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
-            log.info(f"    ✓ {len(link_rows):,} parlamentares linkados a :Pessoa")
+                result = session.run(
+                    "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
+                )
+                for rec in result:
+                    cpf = _resolve_cpf(rec["nome"] or "", exact_map, cand_tokens)
+                    if cpf:
+                        link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
+                    else:
+                        tokens = _norm_tokens(rec["nome"] or "")
+                        if any(tokens & toks for toks, _ in cand_tokens):
+                            ambiguous += 1
+                        else:
+                            missed += 1
+            if link_rows:
+                with driver.session() as session:
+                    run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
+                log.info(
+                    f"    ✓ {len(link_rows):,} parlamentares linkados  "
+                    f"ambíguos={ambiguous}  sem_match={missed}"
+                )
+            else:
+                log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
         else:
-            log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
-    else:
-        log.info("    Pulado — dados TSE não disponíveis")
+            log.info("    Pulado — dados TSE não disponíveis")
 
     driver.close()
     log.info("[emendas_cgu] Pipeline concluído")
