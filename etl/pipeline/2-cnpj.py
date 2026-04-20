@@ -22,6 +22,7 @@ Rels: SOCIO_DE, LOCALIZADA_EM
 import csv
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 import random
@@ -29,8 +30,8 @@ from neo4j import GraphDatabase
 from pipeline.lib import classify_doc, make_partner_id, IngestionRun, setup_schema
 log = logging.getLogger(__name__)
 DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
-CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "20000"))  # linhas lidas do CSV por vez
-BATCH        = int(os.environ.get("NEO4J_BATCH", "2000"))   # linhas por UNWIND
+CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "50000"))  # linhas lidas do CSV por vez
+BATCH        = int(os.environ.get("NEO4J_BATCH", "5000"))   # linhas por UNWIND
 WORKERS      = int(os.environ.get("PIPELINE_WORKERS", "3")) # sessões Neo4j paralelas
 SNAPSHOT_FMT = "%Y-%m"
 FONTE = {
@@ -524,12 +525,19 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
             tables = _load_domain_tables(csv_dir)
             log.info("  [1/4] Empresas (sequencial — cria nós base)...")
             _load_empresas(driver, csv_dir, tables, snapshot)
-            log.info("  [2/4] Simples (sequencial — enriquece Empresa)...")
-            _load_simples(driver, csv_dir, snapshot)
-            log.info("  [3/4] Estabelecimentos (sequencial)...")
-            _load_estabelecimentos(driver, csv_dir, tables, snapshot)
-            log.info("  [4/4] Sócios (sequencial)...")
-            total_socios = _load_socios(driver, csv_dir, tables, snapshot)
+            log.info(f"  [2-4] Simples + Estabelecimentos + Sócios (paralelo, workers={WORKERS})...")
+            total_socios = 0
+            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+                futures = {
+                    pool.submit(_load_simples,          driver, csv_dir,        snapshot): "simples",
+                    pool.submit(_load_estabelecimentos, driver, csv_dir, tables, snapshot): "estabelecimentos",
+                    pool.submit(_load_socios,           driver, csv_dir, tables, snapshot): "socios",
+                }
+                for future in as_completed(futures):
+                    name = futures[future]
+                    result = future.result()   # propaga exceção imediatamente
+                    if name == "socios":
+                        total_socios = result
             run_ctx.add(rows_out=total_socios)
             # ── liga municípios RF → nós canônicos IBGE via MESMO_QUE ─────
             log.info("  Linkando municípios RF → IBGE via MESMO_QUE...")
