@@ -13,8 +13,8 @@
 ```
 #### 2.2. Ou bases específicas:
 ```bash
-    docker compose run --rm etl download
-    docker compose run --rm etl pipeline
+    docker compose run --rm etl download [nome_da_base]
+    docker compose run --rm etl pipeline [nome_da_base]
 ```
 #### 2.3. Analytics
 ```bash

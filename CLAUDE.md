@@ -13,25 +13,25 @@ DABERTO é uma infraestrutura open-source que cruza bases públicas brasileiras 
 docker compose up -d
 
 # ETL completo (download + pipeline)
-docker compose --profile etl run --rm etl
+docker compose run --rm etl
 
 # Bases específicas
-docker compose --profile etl run --rm etl download cnpj
-docker compose --profile etl run --rm etl pipeline emendas_cgu
+docker compose run --rm etl download cnpj
+docker compose run --rm etl pipeline emendas_cgu
 
 # Flags disponíveis
-docker compose --profile etl run --rm etl download cnpj --chunk 100000 --workers 4
-docker compose --profile etl run --rm etl download tse --eleicao 2024 --eleicao 2022
-docker compose --profile etl run --rm etl pipeline cnpj --history   # todos os snapshots
-docker compose --profile etl run --rm etl run cnpj --full           # download + pipeline + analytics
+docker compose run --rm etl download cnpj --chunk 100000 --workers 4
+docker compose run --rm etl download tse --eleicao 2024 --eleicao 2022
+docker compose run --rm etl pipeline cnpj --history   # todos os snapshots
+docker compose run --rm etl run cnpj --full           # download + pipeline + analytics
 
 # Analytics
-docker compose --profile etl run --rm etl analytics gds             # GDS (Louvain, PageRank, etc.)
-docker compose --profile etl run --rm etl analytics splink          # deduplicação probabilística
+docker compose run --rm etl analytics gds             # GDS (Louvain, PageRank, etc.)
+docker compose run --rm etl analytics splink          # deduplicação probabilística
 
 # Operações de schema e status
-docker compose --profile etl run --rm etl schema                    # aplica constraints + índices + fulltext
-docker compose --profile etl run --rm etl ingestion-status          # status dos últimos runs por pipeline
+docker compose run --rm etl schema                    # aplica constraints + índices + fulltext
+docker compose run --rm etl ingestion-status          # status dos últimos runs por pipeline
 
 # Rebuild forçado do ETL (limpa cache)
 docker compose build --no-cache etl
@@ -127,7 +127,7 @@ Todo pipeline cria/atualiza um nó `:IngestionRun {run_id}` com:
 - `error`: mensagem de erro (primeiros 1000 chars) se falhar
 
 Consultar via browser: `MATCH (r:IngestionRun) RETURN r ORDER BY r.started_at DESC LIMIT 20`
-Ou via CLI: `docker compose --profile etl run --rm etl ingestion-status`
+Ou via CLI: `docker compose run --rm etl ingestion-status`
 
 ### Fulltext Search (`entidade_busca`)
 Criado automaticamente por `setup_schema()`. Cobre labels:
