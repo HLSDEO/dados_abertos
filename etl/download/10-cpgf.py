@@ -32,7 +32,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cpgf"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "cpgf"
 
 # ── Janela de tempo ───────────────────────────────────────────────────────────
 ANOS = 4   # quantos anos para trás baixar

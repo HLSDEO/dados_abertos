@@ -37,7 +37,7 @@ import pandas as pd
 
 log = logging.getLogger(__name__)
 
-DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "cnpj"
 _DEFAULT_CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "200000"))  # SSD NVMe aguenta chunks maiores
 SNAPSHOT_FMT = "%Y-%m"
 

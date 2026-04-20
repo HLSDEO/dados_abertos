@@ -34,7 +34,7 @@ from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, se
 
 log = logging.getLogger(__name__)
 
-DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "emendas_cgu"
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "emendas_cgu"
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "10000"))
 BATCH      = int(os.environ.get("NEO4J_BATCH", "500"))
 

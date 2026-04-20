@@ -41,7 +41,7 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "pncp"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "pncp"
 
 API_EDITAIS   = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao"
 API_CONTRATOS = "https://pncp.gov.br/api/consulta/v1/contratos"

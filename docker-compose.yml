@@ -52,7 +52,7 @@ services:
       PIPELINE_WORKERS:  "${PIPELINE_WORKERS:-2}"
       TZ:                America/Sao_Paulo
     volumes:
-      - ./data:/data             # monta data/ do host em /data no container
+      - ./etl/data:/app/data     # monta etl/data/ do host em /app/data no container
     shm_size: '4gb'        # /dev/shm para extração de ZIPs em RAM
 volumes:
   neo4j_data:

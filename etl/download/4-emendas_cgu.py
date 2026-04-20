@@ -27,7 +27,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "emendas_cgu"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "emendas_cgu"
 
 ZIP_URL = (
     "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/"

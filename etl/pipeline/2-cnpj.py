@@ -29,7 +29,7 @@ import random
 from neo4j import GraphDatabase
 from pipeline.lib import classify_doc, make_partner_id, IngestionRun, setup_schema
 log = logging.getLogger(__name__)
-DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "cnpj"
+DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "cnpj"
 CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "50000"))  # linhas lidas do CSV por vez
 BATCH        = int(os.environ.get("NEO4J_BATCH", "5000"))   # linhas por UNWIND
 WORKERS      = int(os.environ.get("PIPELINE_WORKERS", "3")) # sessões Neo4j paralelas

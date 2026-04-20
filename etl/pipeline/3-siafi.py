@@ -29,7 +29,7 @@ from pipeline.lib import wait_for_neo4j, run_batches, IngestionRun, setup_schema
 
 log = logging.getLogger(__name__)
 
-DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data"))
 XLSX_PATH  = DATA_DIR / "siafi" / "unidades.xlsx"
 BATCH      = int(os.environ.get("NEO4J_BATCH", "500"))
 

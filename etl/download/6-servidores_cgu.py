@@ -34,7 +34,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "servidores"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "servidores"
 CGU_BASE = "https://dadosabertos-download.cgu.gov.br/PortalDaTransparencia/saida/servidores"
 
 FONTE = {

@@ -23,7 +23,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tesouro_transparente"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "tesouro_transparente"
 
 FONTE = {
     "fonte_nome":      "Tesouro Nacional — Tesouro Transparente",

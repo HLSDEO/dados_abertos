@@ -31,7 +31,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "sancoes_cgu"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "sancoes_cgu"
 BASE_URL = "https://portaldatransparencia.gov.br/download-de-dados"
 LOOKBACK = 30   # dias para recuar buscando a publicação mais recente
 

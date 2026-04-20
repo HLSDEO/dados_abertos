@@ -35,7 +35,7 @@ import requests
 log = logging.getLogger(__name__)
 
 TSE_CDN  = "https://cdn.tse.jus.br/estatistica/sead/odsele"
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tse"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "tse"
 
 FONTE = {
     "fonte_nome":      "TSE — Tribunal Superior Eleitoral",

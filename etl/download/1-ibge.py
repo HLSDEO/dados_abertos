@@ -16,7 +16,7 @@ import requests
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://servicodados.ibge.gov.br/api/v1/localidades"
-DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "ibge"
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "ibge"
 
 # Metadados da fonte — altere aqui se a fonte mudar
 FONTE = {
