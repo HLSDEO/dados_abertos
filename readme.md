@@ -1,56 +1,90 @@
-# DADOS ABERTOS -DABERTO
-**Infraestrutura open-source em grafo que cruza bases publicas brasileiras para gerar inteligencia acionavel para melhoria civica.**
+# DADOS ABERTOS — DABERTO
+**Infraestrutura open-source em grafo que cruza bases públicas brasileiras para gerar inteligência acionável para melhoria cívica.**
+
+## Estrutura
+```
+dados_abertos/
+  api/       — FastAPI (endpoints de busca, perfil, grafo)
+  etl/       — scripts de download + pipeline + analytics
+  etl/data/  — dados baixados (gitignored)
+  neo4j/     — configuração e Dockerfile do banco
+```
 
 ## Comandos
-### 1. sobe o Neo4j (fica em background)
 ```bash
-    docker compose up -d
+docker compose up -d
 ```
-### 2. executa o ETL
-#### 2.1. completo (download + pipeline)
+- Neo4j Browser: http://localhost:7474 (usuário: `neo4j` / senha: `changeme`)
+- API: http://localhost:8000/docs
+
+### 2. ETL
+
+#### Completo (download + pipeline)
 ```bash
-    docker compose run --rm etl
+docker compose run --rm etl
 ```
-#### 2.2. Ou bases específicas:
+
+#### Bases específicas
 ```bash
     docker compose run --rm etl download [nome_da_base]
     docker compose run --rm etl pipeline [nome_da_base]
 ```
-#### 2.3. Analytics
+
+#### Flags disponíveis
 ```bash
-    docker compose run --rm etl analytics gds       # GDS: comunidades, PageRank, betweenness
-    docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas *
+docker compose run --rm etl download cnpj --chunk 100000 --workers 4
+docker compose run --rm etl download tse --eleicao 2024 --eleicao 2022
+docker compose run --rm etl pipeline cnpj --history   # todos os snapshots
+docker compose run --rm etl run cnpj --full           # download + pipeline + analytics
+```
+
+#### Analytics
+```bash
+docker compose run --rm etl analytics gds       # Louvain, PageRank, Betweenness, NodeSimilarity
+docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas *
 ```
 > \* Requer `pip install splink duckdb` (ou descomente em `etl/requirements.txt` e rebuilde a imagem)
 
-#### 2.4. Schema e status
+#### Schema e status
 ```bash
-    docker compose run --rm etl schema              # aplica constraints + índices + fulltext
-    docker compose run --rm etl ingestion-status    # mostra status dos últimos runs de cada pipeline
+docker compose run --rm etl schema              # aplica constraints + índices + fulltext
+docker compose run --rm etl ingestion-status    # mostra status dos últimos runs
 ```
 
-#### 100. Limpar o cache do ETL:
+#### Rebuild do ETL
 ```bash
-    docker compose build --no-cache etl
+docker compose build --no-cache etl
 ```
 
-#### BASES
-| Nome | Descrição |
-| :--- | :---: |
-| ibge | Dados do IBGE relacionados a munícipios, estados. |
-| cnpj | Dados da receita federal relacionados a empresas, sócios e estabelecimentos. |
-| siafi | Dados de órgãos e unidades com seu código SIAFI. |
-| servidores_cgu | Dados obtidos do CGU, relacionados aos servidores SIAPE, militares. |
-| emendas_cgu | Dados obtidos do CGU, relacionados a emendas parlamentares. |
-| tse | Dados do TSE relacionados ao candidatos a eleições e doadores. |
-| sancoes_cgu | Dados obtidos do CGU, relacionados a sanções aplicadas a empresas. |
-| tesouro_transparente | Dados do Tesouro Transparente relacionados a dados de ordem bancária de emendas parlamentares individuais e de bancada. |
+## Bases
 
-## 4. acessa o browser do Neo4j
-* http://localhost:7474   (usuário: neo4j / senha: changeme)
+| Base | Descrição | Nós principais |
+| :--- | :--- | :--- |
+| ibge | IBGE — municípios e estados | Regiao, Estado, Municipio |
+| cnpj | Receita Federal — empresas, sócios, estabelecimentos | Empresa, Pessoa, **Partner**, Municipio |
+| siafi | Órgãos e unidades com código SIAFI | UnidadeGestora, Orgao, Esfera |
+| servidores_cgu | CGU — servidores SIAPE e militares | Servidor |
+| emendas_cgu | CGU — emendas parlamentares | Emenda, Parlamentar |
+| tse | TSE — candidatos a eleições e doadores | Pessoa, Partido, Eleicao |
+| sancoes_cgu | CGU — sanções aplicadas a empresas | Sancao |
+| pncp | Portal Nacional de Contratações Públicas | Contrato, Licitacao |
+| tesouro_transparente | Ordens bancárias de emendas parlamentares | — |
+
+## API
+
+Documentação interativa: http://localhost:8000/docs
+
+| Endpoint | Descrição |
+| :--- | :--- |
+| `GET /search?q=texto` | Busca fulltext em todos os tipos de entidade |
+| `GET /pessoa/{cpf}` | Perfil: sócios, servidor, candidaturas, sanções indiretas |
+| `GET /empresa/{cnpj_basico}` | Perfil: sócios, sanções, contratos, emendas, similares |
+| `GET /parlamentar/{id}` | Perfil: emendas, empresas beneficiadas, doadores |
+| `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges) |
+
+## Consultas úteis no Neo4j
 
 ### Busca fulltext
-Após a carga, use o índice `entidade_busca` para busca livre sobre todos os tipos de entidade:
 ```cypher
 CALL db.index.fulltext.queryNodes('entidade_busca', 'Marco Feliciano')
 YIELD node, score
@@ -67,12 +101,13 @@ ORDER BY source
 ```
 
 ## Arquitetura
+
 | Camada | Tecnologia |
-| :--- | :---: |
+| :--- | :--- |
 | Banco de Grafo | Neo4j 5 Community + GDS |
-| Backend | FastAPI (Python 3.12+, async) |
-| Frontend | * |
-| ETL | Python (pandas, splink opcional) |
+| API | FastAPI (Python 3.12+) |
+| Frontend | — (a implementar) |
+| ETL | Python 3.12 (pandas, splink opcional) |
 | Infra | Docker Compose |
 
 ## Features
@@ -84,10 +119,13 @@ Sócios CNPJ com CPF mascarado (ex: `***.039.886-**`) não são descartados. Vir
 Todo pipeline registra um nó de auditoria com status (`running` / `loaded` / `quality_fail`), timestamps, contagem de linhas e erro (se houver). Visível no browser do Neo4j ou via `ingestion-status`.
 
 ### Fulltext Search nativo
-Índice `entidade_busca` cobre 12 labels e 14 propriedades — busca livre sem Elasticsearch.
+Índice `entidade_busca` cobre 13 labels e 14 propriedades — busca livre sem Elasticsearch.
 
 ### Deduplicação probabilística (Splink)
 Detecta pessoas duplicadas entre fontes usando Jaro-Winkler + exact match em CPF/data de nascimento. Cria `(:Pessoa)-[:MESMO_QUE {score, confianca}]->(:Pessoa)` para pares acima de 0.8 de probabilidade.
 
 ### Linking fuzzy Parlamentar ↔ TSE
 Resolve nomes abreviados como "PR. MARCO FELICIANO" → CPF do candidato TSE usando match em cascata: exact → normalized → token subset. Só vincula quando há CPF único (sem ambiguidade).
+
+### GDS Analytics
+Após carga completa, `analytics gds` projeta o grafo em memória e executa Louvain (`gds_comunidade`), PageRank (`gds_pagerank`), Betweenness (`gds_betweenness`) e NodeSimilarity (`(:Empresa)-[:SIMILAR_A]->(:Empresa)`).

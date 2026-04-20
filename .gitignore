@@ -9,3 +9,4 @@
 *.txt
 *.xlsx
 /etl/data/pncp
+*.pyc
