@@ -82,6 +82,7 @@ Documentação interativa: http://localhost:8000/docs
 | `GET /empresa/{cnpj_basico}` | Perfil: sócios, sanções, contratos, emendas, similares |
 | `GET /parlamentar/{id}` | Perfil: emendas, empresas beneficiadas, doadores |
 | `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges) |
+| `GET /docs` | Swagger UI |
 
 ## Consultas úteis no Neo4j
 
