@@ -166,10 +166,9 @@ MERGE (e)-[:TEM_CONVENIO]->(c)
 Q_DESPESA_NOS = """
 UNWIND $rows AS r
 MERGE (d:Despesa {codigo_despesa: r.codigo_despesa})
-SET d.valor_empenhado = toFloat(r.valor_empenhado),
-    d.valor_liquidado = toFloat(r.valor_liquidado),
-    d.valor_pago      = toFloat(r.valor_pago),
+SET d.valor_recebido  = toFloat(r.valor_recebido),
     d.nome_favorecido = r.nome_favorecido,
+    d.tipo_favorecido = r.tipo_favorecido,
     d.cnpj_favorecido = r.cnpj_favorecido,
     d.fonte_nome      = r.fonte_nome
 """
@@ -184,16 +183,16 @@ MERGE (e)-[:TEM_DESPESA]->(d)
 Q_DESPESA_EMPRESA = """
 UNWIND $rows AS r
 MATCH (d:Despesa {codigo_despesa: r.codigo_despesa})
-WHERE r.cnpj_favorecido <> ""
+WHERE r.cnpj_favorecido <> "" AND r.tipo_favorecido = "Pessoa Jurídica"
 MERGE (emp:Empresa {cnpj_basico: r.cnpj_favorecido})
 MERGE (d)-[:PAGO_A]->(emp)
 """
 
-# Atalho direto Emenda → Empresa agregando valor_pago de todas as despesas vinculadas.
+# Atalho direto Emenda → Empresa agregando valor_recebido de todas as despesas vinculadas.
 # Derivado do grafo já carregado (idempotente: SET sobrescreve em re-run).
 Q_EMENDA_BENEFICIOU = """
 MATCH (e:Emenda)-[:TEM_DESPESA]->(d:Despesa)-[:PAGO_A]->(emp:Empresa)
-WITH e, emp, sum(d.valor_pago) AS total
+WITH e, emp, sum(d.valor_recebido) AS total
 MERGE (e)-[rel:BENEFICIOU]->(emp)
 SET rel.valor_total = total
 """
@@ -312,7 +311,8 @@ def _build_nome_cpf_map(driver) -> tuple[dict[str, str], list[tuple[frozenset, s
 
 
 def _safe_float(s: str) -> str:
-    s = (s or "").strip()
+    # CGU usa vírgula como separador decimal em vários arquivos
+    s = (s or "").strip().replace(",", ".")
     if not s:
         return "0"
     try:
@@ -373,8 +373,9 @@ def _t_emendas(chunk: list[dict]) -> dict:
             "codigo_emenda":     cod_e,
             "ano_emenda":        r.get("Ano da Emenda", "").strip(),
             "tipo_emenda":       r.get("Tipo de Emenda", r.get("Tipo da Emenda", "")).strip(),
-            "numero_emenda":     r.get("Número da Emenda", "").strip(),
-            "localidade_gasto":  r.get("Localidade do Gasto", "").strip(),
+            "numero_emenda":     r.get("Número da Emenda", r.get("Número da emenda", "")).strip(),
+            "localidade_gasto":  r.get("Localidade do Gasto",
+                                       r.get("Localidade de aplicação do recurso", "")).strip(),
             "regiao":            r.get("Região", "").strip(),
             "valor_empenhado":   _safe_float(r.get("Valor Empenhado", "")),
             "valor_liquidado":   _safe_float(r.get("Valor Liquidado", "")),
@@ -419,7 +420,9 @@ def _t_convenios(chunk: list[dict]) -> list[dict]:
             "codigo_emenda":   cod_e,
             "numero_convenio": num_c,
             "objeto":          r.get("Objeto Convênio", r.get("Objeto do Convênio", "")).strip(),
-            "valor_emenda":    _safe_float(r.get("Valor Repassado", r.get("Valor", "0"))),
+            "convenente":      r.get("Convenente", "").strip(),
+            "valor_emenda":    _safe_float(r.get("Valor Convênio",
+                                                  r.get("Valor Repassado", r.get("Valor", "0")))),
             "situacao":        r.get("Situação", "").strip(),
             **FONTE,
         })
@@ -432,17 +435,20 @@ def _t_despesas(chunk: list[dict]) -> list[dict]:
         cod_e = r.get("Código da Emenda", "").strip()
         if not cod_e:
             continue
-        # chave composta: emenda + favorecido + fase
-        cnpj  = "".join(c for c in r.get("CNPJ Favorecido", r.get("CNPJ do Favorecido", "")) if c.isdigit())
-        cod_d = f"{cod_e}_{cnpj or r.get('Nome Favorecido', '')[:20]}"
+        # Código do Favorecido: CNPJ (14 dígitos) para PJ, CPF para PF
+        cod_fav      = "".join(c for c in r.get("Código do Favorecido", "") if c.isdigit())
+        tipo_fav     = r.get("Tipo Favorecido", "").strip()
+        nome_fav     = r.get("Favorecido", "").strip()
+        # chave única por emenda+favorecido (uma linha por beneficiário por emenda por mês)
+        cod_d        = f"{cod_e}_{cod_fav or nome_fav[:20]}"
+        cnpj_basico  = cod_fav[:8].zfill(8) if len(cod_fav) >= 8 and tipo_fav == "Pessoa Jurídica" else ""
         rows.append({
             "codigo_emenda":   cod_e,
             "codigo_despesa":  cod_d,
-            "valor_empenhado": _safe_float(r.get("Valor Empenhado", "0")),
-            "valor_liquidado": _safe_float(r.get("Valor Liquidado", "0")),
-            "valor_pago":      _safe_float(r.get("Valor Pago", "0")),
-            "nome_favorecido": r.get("Nome Favorecido", "").strip(),
-            "cnpj_favorecido": cnpj[:8].zfill(8) if len(cnpj) >= 8 else "",
+            "valor_recebido":  _safe_float(r.get("Valor Recebido", "0")),
+            "nome_favorecido": nome_fav,
+            "tipo_favorecido": tipo_fav,
+            "cnpj_favorecido": cnpj_basico,
             **FONTE,
         })
     return rows
