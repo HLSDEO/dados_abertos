@@ -136,18 +136,19 @@ def _process_zip(tmp: Path, url: str, competencia: str, out_path: Path) -> int:
             return 0
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        writer = None
 
-        for name in csvs:
-            with zipfile.ZipFile(tmp) as zf:
-                raw  = zf.read(name)
-                text = raw.decode("latin-1", errors="replace")
-                reader = csv.DictReader(io.StringIO(text), delimiter=";")
+        with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = None
 
-                if reader.fieldnames:
-                    log.info(f"    Colunas: {reader.fieldnames[:5]}...")
+            for name in csvs:
+                with zipfile.ZipFile(tmp) as zf:
+                    raw  = zf.read(name)
+                    text = raw.decode("latin-1", errors="replace")
+                    reader = csv.DictReader(io.StringIO(text), delimiter=";")
 
-                with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
+                    if reader.fieldnames:
+                        log.info(f"    Colunas: {reader.fieldnames[:5]}...")
+
                     for row in reader:
                         row = {k: (v or "").strip() for k, v in row.items()
                                if k is not None}
@@ -166,7 +167,7 @@ def _process_zip(tmp: Path, url: str, competencia: str, out_path: Path) -> int:
                         writer.writerow(mapped)
                         total += 1
 
-            log.info(f"    {name}: {total:,} registros")
+                log.info(f"    {name}: {total:,} registros")
 
     except zipfile.BadZipFile as exc:
         log.error(f"    ZIP inválido: {exc}")
