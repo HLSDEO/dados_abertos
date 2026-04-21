@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deps import get_driver, close_driver
-from routers import search, pessoa, empresa, parlamentar, graph
+from routers import search, pessoa, empresa, parlamentar, graph, patterns
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(pessoa.router)
 app.include_router(empresa.router)
 app.include_router(parlamentar.router)
 app.include_router(graph.router)
+app.include_router(patterns.router)
 
 
 @app.get("/health")
