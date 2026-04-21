@@ -83,6 +83,7 @@ DOWNLOADS = {
     "servidores_cgu":       "download/6-servidores_cgu.py",
     "sancoes_cgu":          "download/7-sancoes_cgu.py",
     "pncp":                 "download/8-pncp.py",
+    "pgfn":                 "download/9-pgfn.py",
     "cpgf":                 "download/10-cpgf.py",
 }
 
@@ -95,6 +96,7 @@ PIPELINES = {
     "tse":              "pipeline/6-tse.py",
     "sancoes_cgu":      "pipeline/7-sancoes_cgu.py",
     "pncp":             "pipeline/8-pncp.py",
+    "pgfn":             "pipeline/9-pgfn.py",
 }
 
 ANALYTICS = {
