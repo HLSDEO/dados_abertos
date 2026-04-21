@@ -4,22 +4,26 @@ Pipeline 5 - Emendas Parlamentares CGU → Neo4j
 Lê os CSVs de data/emendas_cgu/ e carrega no grafo.
 
 Arquivos:
-  emendas.csv   → nós :Emenda + vínculos geográficos e orçamentários
-  convenios.csv → rel :Emenda -[:TEM_CONVENIO]-> :Convenio
-  despesas.csv  → rel :Emenda -[:TEM_DESPESA]-> :Despesa
+  emendas.csv        → nós :Emenda + vínculos geográficos e orçamentários
+  convenios.csv      → rel :Emenda -[:TEM_CONVENIO]-> :Convenio
+  por_favorecido.csv → rel :Emenda -[:TEM_DESPESA]-> :Despesa
 
 Nós criados/atualizados:
-  (:Emenda)       — codigo_emenda como chave
-  (:Parlamentar)  — codigo_autor como chave → merge com :Pessoa pelo nome
-  (:FuncaoOrcamentaria) — codigo_funcao
-  (:Programa)     — codigo_programa
+  (:Emenda)               — codigo_emenda como chave
+  (:Parlamentar)          — codigo_autor como chave → merge com :Pessoa pelo nome
+  (:FuncaoOrcamentaria)   — codigo_funcao
+  (:Programa)             — codigo_programa
+  (:Despesa)              — chave composta emenda+cnpj
+  (:Empresa)              — merge pelo cnpj_basico (8 dígitos)
 
 Relacionamentos:
   (:Parlamentar)-[:AUTORA_DE]->(:Emenda)
-  (:Emenda)-[:DESTINADA_A]->(:Municipio|:Estado)    ← pelo Código IBGE
+  (:Emenda)-[:DESTINADA_A]->(:Municipio|:Estado)        ← pelo Código IBGE
   (:Emenda)-[:CLASSIFICADA_EM]->(:FuncaoOrcamentaria)
   (:Emenda)-[:TEM_DESPESA]->(:Despesa)
   (:Emenda)-[:TEM_CONVENIO]->(:Convenio)
+  (:Despesa)-[:PAGO_A]->(:Empresa)
+  (:Emenda)-[:BENEFICIOU {valor_total}]->(:Empresa)     ← agregado de todas as despesas
 """
 
 import csv
@@ -61,6 +65,7 @@ Q_INDEXES = [
     "CREATE INDEX parlamentar_nome  IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
     "CREATE INDEX municipio_cod_ibge IF NOT EXISTS FOR (m:Municipio) ON (m.codigo_ibge)",
     "CREATE INDEX pessoa_nome_urna  IF NOT EXISTS FOR (p:Pessoa)    ON (p.nome_urna)",
+    "CREATE INDEX empresa_cnpj_bas  IF NOT EXISTS FOR (emp:Empresa) ON (emp.cnpj_basico)",
 ]
 
 
@@ -182,6 +187,15 @@ MATCH (d:Despesa {codigo_despesa: r.codigo_despesa})
 WHERE r.cnpj_favorecido <> ""
 MERGE (emp:Empresa {cnpj_basico: r.cnpj_favorecido})
 MERGE (d)-[:PAGO_A]->(emp)
+"""
+
+# Atalho direto Emenda → Empresa agregando valor_pago de todas as despesas vinculadas.
+# Derivado do grafo já carregado (idempotente: SET sobrescreve em re-run).
+Q_EMENDA_BENEFICIOU = """
+MATCH (e:Emenda)-[:TEM_DESPESA]->(d:Despesa)-[:PAGO_A]->(emp:Empresa)
+WITH e, emp, sum(d.valor_pago) AS total
+MERGE (e)-[rel:BENEFICIOU]->(emp)
+SET rel.valor_total = total
 """
 
 # ── Resolução fuzzy de nomes ──────────────────────────────────────────────────
@@ -521,16 +535,23 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             session.run(q)
 
     with IngestionRun(driver, "emendas_cgu"):
-        log.info("  [1/4] Emendas, parlamentares, funções...")
+        log.info("  [1/5] Emendas, parlamentares, funções...")
         _load_emendas(driver)
 
-        log.info("  [2/4] Convênios...")
+        log.info("  [2/5] Convênios...")
         _load_convenios(driver)
 
-        log.info("  [3/4] Por favorecido...")
+        log.info("  [3/5] Por favorecido...")
         _load_por_favorecido(driver)
 
-        log.info("  [4/4] Linkando Parlamentar → Pessoa (TSE)...")
+        log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")
+        with driver.session() as session:
+            result = session.run(Q_EMENDA_BENEFICIOU)
+            summary = result.consume()
+            log.info(f"    ✓ {summary.counters.relationships_created:,} rels BENEFICIOU criadas  "
+                     f"({summary.counters.properties_set:,} props)")
+
+        log.info("  [5/5] Linkando Parlamentar → Pessoa (TSE)...")
         exact_map, cand_tokens = _build_nome_cpf_map(driver)
         if exact_map or cand_tokens:
             link_rows = []
