@@ -1,10 +1,11 @@
 """
-Download 3 - TSE: Candidatos e Doações Eleitorais
+Download 3 - TSE: Candidatos, Doações Eleitorais e Bens Declarados
 Fonte: https://cdn.tse.jus.br/estatistica/sead/odsele/
 
 Baixa e extrai para data/tse/:
   candidatos/{ano}.csv   ← consolidado nacional (arquivo BRASIL do ZIP)
   doacoes/{ano}.csv      ← doações consolidadas por ano
+  bens/{ano}.csv         ← bens declarados pelos candidatos (patrimônio)
 
 Tipos de eleição suportados:
   Municipais:  2024, 2020, 2016, 2012, 2008, 2004, 2000
@@ -48,6 +49,13 @@ FONTE = {
 ANOS_MUNICIPAIS = [2024, 2020, 2016, 2012, 2008, 2004, 2000]
 ANOS_GERAIS     = [2022, 2018, 2014, 2010, 2006, 2002]
 ANOS_TODOS      = sorted(set(ANOS_MUNICIPAIS + ANOS_GERAIS), reverse=True)
+
+# ── Colunas de interesse — bens declarados ───────────────────────────────────
+COLUNAS_BENS = {
+    "ANO_ELEICAO", "CD_TIPO_ELEICAO", "NM_TIPO_ELEICAO",
+    "SQ_CANDIDATO", "NR_ORDEM_BEM", "DS_TIPO_BEM",
+    "DS_BEM_CANDIDATO", "VR_BEM_CANDIDATO",
+}
 
 # ── Colunas de interesse — candidatos ────────────────────────────────────────
 COLUNAS_CAND = {
@@ -98,6 +106,10 @@ DOACAO_COLS_EARLY: dict[str, list[str]] = {   # 2002-2008  (.csv pasta brasil)
 
 def _cand_url(ano: int) -> str:
     return f"{TSE_CDN}/consulta_cand/consulta_cand_{ano}.zip"
+
+
+def _bens_url(ano: int) -> str:
+    return f"{TSE_CDN}/bem_candidato/bem_candidato_{ano}.zip"
 
 
 def _donation_url(ano: int) -> str:
@@ -234,6 +246,53 @@ def _list_doacao_files(zf: zipfile.ZipFile) -> list[str]:
     return brasil or receitas
 
 
+# ── Bens declarados ───────────────────────────────────────────────────────────
+
+def _process_bens(ano: int) -> None:
+    out_path = DATA_DIR / "bens" / f"bens_{ano}.csv"
+    if out_path.exists():
+        log.info(f"    ✓ já existe ({out_path.stat().st_size/1e6:.1f} MB) — pulando")
+        return
+
+    url     = _bens_url(ano)
+    tmp_zip = _download_to_tmp(url)
+    if not tmp_zip:
+        return
+
+    appender = _CsvAppender(out_path)
+    try:
+        with zipfile.ZipFile(tmp_zip) as zf:
+            names   = [n for n in zf.namelist()
+                       if n.lower().endswith(".csv") and "__macosx" not in n.lower()]
+            targets = [n for n in names if "brasil" in n.lower()] or names
+
+        for target in targets:
+            with zipfile.ZipFile(tmp_zip) as zf:
+                raw    = zf.read(target)
+                text   = raw.decode("latin-1", errors="replace")
+                reader = csv.DictReader(io.StringIO(text), delimiter=";")
+                batch  = []
+                for row in reader:
+                    filtered = {k: v.strip() for k, v in row.items()
+                                if k in COLUNAS_BENS}
+                    _add_fonte(filtered, url, ano)
+                    batch.append(filtered)
+                    if len(batch) >= 10_000:
+                        appender.write_rows(batch)
+                        batch = []
+                if batch:
+                    appender.write_rows(batch)
+            log.info(f"    {target}")
+
+    except zipfile.BadZipFile as exc:
+        log.error(f"    ZIP inválido: {exc}")
+    finally:
+        tmp_zip.unlink(missing_ok=True)
+
+    total = appender.close()
+    log.info(f"    ✓ bens_{ano}.csv  ({total:,} linhas)")
+
+
 # ── Candidatos ────────────────────────────────────────────────────────────────
 
 def _process_candidatos(ano: int) -> None:
@@ -362,6 +421,7 @@ def run(eleicoes: list[int] | None = None):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     (DATA_DIR / "candidatos").mkdir(exist_ok=True)
     (DATA_DIR / "doacoes").mkdir(exist_ok=True)
+    (DATA_DIR / "bens").mkdir(exist_ok=True)
 
     for ano in anos:
         log.info(f"  === Candidatos {ano} ===")
@@ -371,6 +431,11 @@ def run(eleicoes: list[int] | None = None):
     for ano in anos:
         log.info(f"  === Doações {ano} ===")
         _process_doacoes(ano)
+        time.sleep(1)
+
+    for ano in anos:
+        log.info(f"  === Bens declarados {ano} ===")
+        _process_bens(ano)
         time.sleep(1)
 
     log.info("[tse] Download concluído")
