@@ -1,19 +1,21 @@
 """
-Pipeline 3 - TSE: Candidatos e Doações → Neo4j
+Pipeline 3 - TSE: Candidatos, Doações e Bens Declarados → Neo4j
 
 Nós criados/atualizados:
-  (:Pessoa)   cpf ou nr_titulo_eleitoral como chave
-  (:Partido)  sigla como chave
-  (:Eleicao)  cd_eleicao + ano como chave
-  (:Cargo)    ds_cargo como chave
-  (:Municipio) reutiliza nós IBGE (lookup por nome)
-  (:Estado)   sg_uf como chave
+  (:Pessoa)        cpf ou nr_titulo_eleitoral como chave
+  (:Partido)       sigla como chave
+  (:Eleicao)       cd_eleicao + ano como chave
+  (:Cargo)         ds_cargo como chave
+  (:Municipio)     reutiliza nós IBGE (lookup por nome)
+  (:Estado)        sg_uf como chave
+  (:BemDeclarado)  bem_id = sq_candidato_nr_ordem_ano como chave
 
 Relacionamentos:
   (:Pessoa)-[:CANDIDATO_EM {nr_candidato, situacao, turno}]->(:Eleicao)
   (:Eleicao)-[:REALIZADA_EM]->(:Municipio | :Estado)
   (:Pessoa)-[:FILIADA_A {ano}]->(:Partido)
   (:Pessoa | :Empresa)-[:DOOU_PARA {valor, ano}]->(:Pessoa)   ← candidato
+  (:Pessoa)-[:DECLAROU_BEM {ano_eleicao}]->(:BemDeclarado)
 """
 
 import csv
@@ -48,15 +50,17 @@ CARGOS_ESTADUAIS  = {"GOVERNADOR", "VICE-GOVERNADOR", "SENADOR",
 # ── Constraints e índices ─────────────────────────────────────────────────────
 
 Q_CONSTRAINTS = [
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Partido)  REQUIRE n.sigla IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Eleicao)  REQUIRE n.eleicao_id IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Cargo)    REQUIRE n.nome IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Estado)   REQUIRE n.sigla IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Partido)       REQUIRE n.sigla IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Eleicao)       REQUIRE n.eleicao_id IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Cargo)         REQUIRE n.nome IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Estado)        REQUIRE n.sigla IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (n:BemDeclarado)  REQUIRE n.bem_id IS UNIQUE",
 ]
 Q_INDEXES = [
-    "CREATE INDEX pessoa_titulo IF NOT EXISTS FOR (p:Pessoa) ON (p.nr_titulo_eleitoral)",
-    "CREATE INDEX eleicao_ano   IF NOT EXISTS FOR (e:Eleicao) ON (e.ano)",
-    "CREATE INDEX eleicao_uf    IF NOT EXISTS FOR (e:Eleicao) ON (e.sg_uf)",
+    "CREATE INDEX pessoa_titulo IF NOT EXISTS FOR (p:Pessoa)       ON (p.nr_titulo_eleitoral)",
+    "CREATE INDEX eleicao_ano   IF NOT EXISTS FOR (e:Eleicao)      ON (e.ano)",
+    "CREATE INDEX eleicao_uf    IF NOT EXISTS FOR (e:Eleicao)      ON (e.sg_uf)",
+    "CREATE INDEX bem_tipo      IF NOT EXISTS FOR (b:BemDeclarado) ON (b.tipo_bem)",
 ]
 
 
@@ -171,6 +175,24 @@ SET d.valor = toFloat(r.valor),
     d.ano   = toInteger(r.ano),
     d.sq_candidato = r.sq_candidato,
     d.fonte_nome   = r.fonte_nome
+"""
+
+Q_BEM = """
+UNWIND $rows AS r
+MERGE (b:BemDeclarado {bem_id: r.bem_id})
+SET b.tipo_bem   = r.tipo_bem,
+    b.descricao  = r.descricao,
+    b.valor      = toFloat(r.valor),
+    b.ano        = toInteger(r.ano),
+    b.fonte_nome = r.fonte_nome
+"""
+
+Q_DECLAROU_BEM = """
+UNWIND $rows AS r
+MATCH (p:Pessoa {cpf: r.cpf})
+MATCH (b:BemDeclarado {bem_id: r.bem_id})
+MERGE (p)-[rel:DECLAROU_BEM]->(b)
+SET rel.ano_eleicao = toInteger(r.ano)
 """
 
 Q_LINK_MUNICIPIO_TSE_IBGE = """
@@ -423,6 +445,61 @@ def _load_doacoes(driver, data_dir: Path,
         log.info(f"    ✓ {path.name}  PF={pf_t:,}  PJ={pj_t:,}  sem_cpf={skip_t:,}")
 
 
+def _safe_valor_bem(s: str) -> float:
+    """'1.234.567,89' → 1234567.89  (formato PT-BR com separador de milhar)"""
+    try:
+        return float(s.strip().replace(".", "").replace(",", "."))
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def _t_bens(chunk: list[dict], sq_cpf: dict[str, str]) -> list[dict]:
+    rows = []
+    for r in chunk:
+        sq  = r.get("SQ_CANDIDATO", "").strip()
+        cpf = sq_cpf.get(sq, "")
+        if not cpf:
+            continue
+        nr  = r.get("NR_ORDEM_BEM", "0").strip()
+        ano = r.get("ANO_ELEICAO", "").strip()
+        rows.append({
+            "bem_id":    f"{sq}_{nr}_{ano}",
+            "cpf":       cpf,
+            "tipo_bem":  r.get("DS_TIPO_BEM", "").strip(),
+            "descricao": r.get("DS_BEM_CANDIDATO", "").strip(),
+            "valor":     _safe_valor_bem(r.get("VR_BEM_CANDIDATO", "0")),
+            "ano":       ano,
+            "fonte_nome": r.get("fonte_nome", FONTE["fonte_nome"]),
+        })
+    return rows
+
+
+def _load_bens(driver, data_dir: Path,
+               sq_cpf: dict[str, str],
+               eleicoes: list[int] | None = None) -> None:
+    todos = sorted(data_dir.glob("bens_*.csv"))
+    if eleicoes:
+        todos = [p for p in todos
+                 if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
+                        for ano in eleicoes)]
+    if not todos:
+        log.warning("  Nenhum arquivo bens_*.csv encontrado (execute download tse primeiro)")
+        return
+
+    for path in todos:
+        log.info(f"  Carregando {path.name}...")
+        total = skip = 0
+        with driver.session() as session:
+            for chunk in iter_csv(path):
+                rows = _t_bens(chunk, sq_cpf)
+                skip += len(chunk) - len(rows)
+                if rows:
+                    run_batches(session, Q_BEM, rows)
+                    run_batches(session, Q_DECLAROU_BEM, rows)
+                    total += len(rows)
+        log.info(f"    ✓ {path.name}  {total:,} bens  sem_cpf={skip:,}")
+
+
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
@@ -447,15 +524,19 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
     with IngestionRun(driver, "tse"):
         cand_dir = DATA_DIR / "candidatos"
         doac_dir = DATA_DIR / "doacoes"
+        bens_dir = DATA_DIR / "bens"
 
-        log.info("  [1/2] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
+        log.info("  [1/3] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
         _load_candidatos(driver, cand_dir, eleicoes)
 
         log.info("  Construindo mapa sq_candidato → cpf...")
         sq_cpf = _build_sq_cpf_map(cand_dir, eleicoes)
 
-        log.info("  [2/2] Doações → DOOU_PARA...")
+        log.info("  [2/3] Doações → DOOU_PARA...")
         _load_doacoes(driver, doac_dir, sq_cpf, eleicoes)
+
+        log.info("  [3/3] Bens declarados → BemDeclarado, DECLAROU_BEM...")
+        _load_bens(driver, bens_dir, sq_cpf, eleicoes)
 
         log.info("  Linkando municípios TSE → IBGE...")
         with driver.session() as session:
