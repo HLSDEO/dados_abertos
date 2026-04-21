@@ -7,23 +7,27 @@ Itens organizados por prioridade e dependência. Marcar com `[x]` ao concluir.
 ## Fase 1 — Padrões com dados existentes (~1–2 dias)
 
 ### 1.1 Fix pipeline de emendas — `BENEFICIOU → Empresa` (30min)
-- [ ] Em `etl/pipeline/5-emendas_cgu.py`, criar relação `(:Emenda)-[:BENEFICIOU]->(:Empresa)` usando `cnpj_favorecido` (já presente no CSV)
+- [x] Em `etl/pipeline/5-emendas_cgu.py`, criar relação `(:Emenda)-[:BENEFICIOU]->(:Empresa)` usando `cnpj_favorecido` (já presente no CSV)
 - Desbloqueia o padrão mais crítico: parlamentar que destina emenda para empresa onde é sócio
 
 ### 1.2 Motor de padrões — endpoint `/patterns/{cnpj}` (~1 dia)
-- [ ] Criar `api/routers/patterns.py` com `GET /patterns/{cnpj}`
-- [ ] Criar registro de patterns: dict `{id, name_pt, cypher, params}`
-- [ ] Retornar `evidence_refs` (IDs dos nós que dispararam o alerta)
-- [ ] Registrar no `main.py`
+- [x] Criar `api/routers/patterns.py` com `GET /patterns/{cnpj}`
+- [x] Criar registro de patterns: dict `{id, name_pt, cypher, params}` → `api/patterns.py`
+- [x] Retornar `evidence_refs` (IDs dos nós que dispararam o alerta)
+- [x] Registrar no `main.py`
 
 #### Padrões implementáveis agora (dados já existem):
 
 | ID | Nome | Cruza |
 |---|---|---|
-| `sanctioned_contract` | Empresa sancionada recebendo contrato | `Sancao.data_inicio/fim` × `Contrato.data_assinatura` |
-| `contract_concentration` | Concentração de contratos | `FIRMOU_CONTRATO` agregado por Empresa |
-| `sanctioned_bid` | Empresa sancionada vencendo licitação | `Sancao` × `Licitacao` |
-| `amendment_owner` | Parlamentar destina emenda para empresa própria | `AUTORA_DE → Emenda → BENEFICIOU → Empresa ← SOCIO_DE ← Pessoa ← (parlamentar)` — **depende do 1.1** |
+| `sanctioned_contract` | Empresa sancionada recebendo contrato | `Sancao.data_inicio/fim` × `Contrato.data_assinatura` | ✅ |
+| `contract_concentration` | Concentração de contratos | `FIRMOU_CONTRATO` agregado por Empresa | ✅ |
+| `sanctioned_bid` | Empresa sancionada vencendo licitação | `Sancao` × `Licitacao` | ✅ |
+| `amendment_owner` | Parlamentar destina emenda para empresa própria | `AUTORA_DE → Emenda → BENEFICIOU → Empresa ← SOCIO_DE ← Pessoa ← (parlamentar)` | ✅ |
+| `split_contracts` | Fracionamento de contratos | Múltiplos contratos < R$80k no mesmo órgão | ✅ |
+| `inexigibility_recurrence` | Inexigibilidade recorrente | ≥ 3 contratos diretos via inexigibilidade | ✅ |
+| `servant_company` | Servidor ativo sócio da empresa contratada | `Servidor.cpf = Pessoa.cpf` × `SOCIO_DE` × `FIRMOU_CONTRATO` | ✅ |
+| `donation_contract` | Empresa doadora com contratos (correlação) | `DOOU_PARA` × `FIRMOU_CONTRATO` | ✅ |
 
 ---
 
@@ -37,10 +41,10 @@ Itens organizados por prioridade e dependência. Marcar com `[x]` ao concluir.
 - Habilita: detecção de enriquecimento ilícito (patrimônio declarado × salário público)
 
 ### 2.2 PGFN — Dívida Ativa (~4–5h)
-- [ ] Criar `etl/download/9-pgfn.py`
+- [x] Criar `etl/download/9-pgfn.py`
   - Fonte: https://portaldatransparencia.gov.br/download/pgfn/
   - Formato: CSV ~2GB
-- [ ] Criar `etl/pipeline/9-pgfn.py`
+- [x] Criar `etl/pipeline/9-pgfn.py`
   - Nó: `(:DividaAtiva {divida_id, tipo, valor_consolidado, situacao, data_inscricao})`
   - Relações:
     - `(:Empresa)-[:POSSUI_DIVIDA]->(:DividaAtiva)`
