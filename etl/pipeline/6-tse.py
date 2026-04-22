@@ -373,10 +373,11 @@ def _build_sq_cpf_map(cand_dir: Path,
     for path in todos:
         for chunk in iter_csv(path):
             for r in chunk:
-                sq  = r.get("SQ_CANDIDATO", "").strip()
-                cpf = _strip_doc(r.get("NR_CPF_CANDIDATO", ""))
-                if sq and cpf and len(cpf) == 11:
-                    sq_cpf[sq] = cpf.zfill(11)
+                sq      = r.get("SQ_CANDIDATO", "").strip()
+                titulo  = _strip_doc(r.get("NR_TITULO_ELEITORAL_CANDIDATO", ""))
+                cpf_key = titulo.zfill(11) if titulo else ""
+                if sq and cpf_key:
+                    sq_cpf[sq] = cpf_key
     log.info(f"  Mapa sq→cpf: {len(sq_cpf):,} candidatos")
     return sq_cpf
 

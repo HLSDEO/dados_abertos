@@ -154,9 +154,9 @@ def _t_dividas(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
 # ── Loader ────────────────────────────────────────────────────────────────────
 
 def _load_dividas(driver) -> None:
-    todos = sorted(DATA_DIR.glob("dividas_*.csv"))
+    todos = sorted(DATA_DIR.glob("*.csv"))
     if not todos:
-        log.warning("  Nenhum arquivo dividas_*.csv encontrado — execute download pgfn primeiro")
+        log.warning("  Nenhum arquivo *.csv encontrado — execute download pgfn primeiro")
         return
 
     for path in todos:
