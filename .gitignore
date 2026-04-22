@@ -6,7 +6,6 @@
 *.zip
 *.jar
 *.log
-*.txt
 *.xlsx
 /etl/data/pncp
 *.pyc
