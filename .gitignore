@@ -9,3 +9,4 @@
 *.xlsx
 /etl/data/pncp
 *.pyc
+frontend_teste/
