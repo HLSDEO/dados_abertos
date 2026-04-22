@@ -299,7 +299,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             log.info(f"  [5/5] Vinculando {len(rows_municipais):,} UASGs → :Municipio...")
             with driver.session() as session:
                 run_batches(session, Q_UASG_MUNICIPIO, rows_municipais,
-                             batch_override=100)
+                             batch=100)
         else:
             log.info("  [5/5] Nenhuma UASG municipal para vincular")
 
