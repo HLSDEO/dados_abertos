@@ -62,7 +62,7 @@ def _get_splink_settings() -> dict:
         retain_matching_columns=True,
         retain_intermediate_calculation_columns=False,
     )
-    return creator.get_settings("duckdb").as_dict()
+    return creator.get_settings("duckdb")
 
 
 def _classify_score(score: float) -> str:

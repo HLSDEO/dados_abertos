@@ -73,22 +73,26 @@ CALL gds.graph.project(
     'Licitacao'
   ],
   {
-    SOCIO_DE:          { orientation: 'UNDIRECTED' },
+    SOCIO_DE:          { orientation: 'NATURAL'    },
     LOCALIZADA_EM:     { orientation: 'NATURAL'    },
     POSSUI_SANCAO:     { orientation: 'NATURAL'    },
     AUTORA_DE:         { orientation: 'NATURAL'    },
     DESTINADA_A:       { orientation: 'NATURAL'    },
-    DOADOR_A:          { orientation: 'NATURAL'    },
+    BENEFICIOU:        { orientation: 'NATURAL'    },
+    DOOU_PARA:         { orientation: 'NATURAL'    },
     EH_SERVIDOR:       { orientation: 'NATURAL'    },
     LOTADO_EM:         { orientation: 'NATURAL'    },
     CANDIDATO_EM:      { orientation: 'NATURAL'    },
-    FILIADA_A:         { orientation: 'NATURAL'    },
-    PERTENCE_A:        { orientation: 'NATURAL'    },
+    POSSUI_DIVIDA:      { orientation: 'NATURAL'    },
+    RECEBEU_EMPRESTIMO: { orientation: 'NATURAL'    },
+    GASTOU:            { orientation: 'NATURAL'    },
+    FORNECEU:          { orientation: 'NATURAL'    },
+    DECLAROU_BEM:     { orientation: 'NATURAL'    },
     MESMO_QUE:         { orientation: 'UNDIRECTED' },
     PUBLICOU_LICITACAO:{ orientation: 'NATURAL'    },
     FIRMOU_CONTRATO:   { orientation: 'NATURAL'    },
     CONTRATOU:         { orientation: 'NATURAL'    },
-    VINCULADO_A:       { orientation: 'NATURAL'    }
+    VINCULADO_A:        { orientation: 'NATURAL'    }
   }
 )
 YIELD graphName, nodeCount, relationshipCount
