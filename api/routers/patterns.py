@@ -91,11 +91,10 @@ def get_state_patterns(uf: str, quantidade: int = Query(10, ge=1, le=100)):
         # Busca empresas no estado via Município
         result = s.run(
             """
-            MATCH (e:Empresa)
-            WHERE EXISTS { (e)-[:LOCALIZADA_EM]->(:Municipio)-[:REALIZADA_EM|:PERTENCE_A]->(:Estado {sigla: $uf}) }
-               OR EXISTS { (e)-[:PERTENCE_A]->(:Estado {sigla: $uf}) }
+            MATCH (e:Empresa)-[:LOCALIZADA_EM]->(m:Municipio)
+            WHERE m.uf = $uf OR m.sigla_uf = $uf
             RETURN e.cnpj_basico AS cnpj, e.razao_social AS nome
-            LIMIT 500
+            LIMIT 200
             """,
             uf=uf,
         ).data()
@@ -103,8 +102,10 @@ def get_state_patterns(uf: str, quantidade: int = Query(10, ge=1, le=100)):
         if not result:
             return {"uf": uf, "total": 0, "empresas": []}
 
-        # Para cada empresa, conta padrões disparados
-        for emp in result:
+        # Para cada empresa, conta padrões disparados (limita para evitar timeout)
+        for idx, emp in enumerate(result):
+            if idx >= 50:  # Limita a 50 empresas para evitar timeout
+                break
             cnpj = emp["cnpj"]
             nome = emp["nome"]
             triggered_count = 0
@@ -117,7 +118,7 @@ def get_state_patterns(uf: str, quantidade: int = Query(10, ge=1, le=100)):
             if triggered_count > 0:
                 empresas_stats.append({
                     "cnpj_basico": cnpj,
-                    "empresa":     nome,
+                    "empresa":    nome,
                     "triggered_count": triggered_count,
                 })
 
