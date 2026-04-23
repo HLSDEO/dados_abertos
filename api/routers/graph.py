@@ -3,6 +3,7 @@ from deps import get_driver
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
+
 _LABEL_KEY = {
     "Pessoa":      "cpf",
     "Empresa":     "cnpj_basico",
@@ -18,6 +19,7 @@ _LABEL_KEY = {
     "Eleicao":     "id",
 }
 
+
 _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
                  "cpf", "cnpj_basico", "cnpj", "uf", "situacao_cadastral",
                  "gds_pagerank", "gds_comunidade", "gds_betweenness",
@@ -32,14 +34,12 @@ def _serialize_node(node) -> dict:
     uid   = f"{label}:{node.get(key)}" if key and node.get(key) else f"eid:{node.element_id}"
 
     # Prioriza nome/razão social conforme o tipo de nó
-    nome = node.get("nome"))
+    nome = node.get("nome") or node.get("razao_social")
     if not nome:
-        nome = node.get("razao_social"))
-    if not nome:
-        nome = node.get("nome_autor")) or node.get("sigla")) or ""
+        nome = node.get("nome_autor") or node.get("sigla") or ""
     
-    razao_social = node.get("razao_social")) or ""
-    cpf_cnpj = (node.get("cpf")) or node.get("cnpj")) or node.get("cnpj_basico")) or ""
+    razao_social = node.get("razao_social") or ""
+    cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
 
     # Propriedades completas (todas as que existem no nó)
     props = {k: node.get(k) for k in _NODE_DISPLAY if node.get(k) is not None}
@@ -80,6 +80,7 @@ def expand(
         raise HTTPException(400, f"Label desconhecido: {label}")
 
     driver = get_driver()
+
     with driver.session() as s:
         # verifica existência
         start = s.run(
