@@ -63,13 +63,17 @@ docker compose build --no-cache etl
 | :--- | :--- | :--- |
 | ibge | IBGE — municípios e estados | Regiao, Estado, Municipio |
 | cnpj | Receita Federal — empresas, sócios, estabelecimentos | Empresa, Pessoa, **Partner**, Municipio |
-| siafi | Órgãos e unidades com código SIAFI | UnidadeGestora, Orgao, Esfera |
+| siafi | SIAFI — órgãos e unidades com código SIAFI | UnidadeGestora, Orgao, Esfera |
 | servidores_cgu | CGU — servidores SIAPE e militares | Servidor |
 | emendas_cgu | CGU — emendas parlamentares | Emenda, Parlamentar |
 | tse | TSE — candidatos a eleições e doadores | Pessoa, Partido, Eleicao |
 | sancoes_cgu | CGU — sanções aplicadas a empresas | Sancao |
 | pncp | Portal Nacional de Contratações Públicas | Contrato, Licitacao |
 | tesouro_transparente | Ordens bancárias de emendas parlamentares | — |
+| pgfn | PGFN — dívida ativa (não previdenciária e previdenciária) | DividaAtiva |
+| camara | Câmara dos Deputados — despesas CEAP | Despesa, Parlamentar |
+| bndes | BNDES — operações de financiamento | Emprestimo |
+| senado | Senado Federal — despesas CEAP | Despesa, Parlamentar (id_senado) |
 
 ## API
 
