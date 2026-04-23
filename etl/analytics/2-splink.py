@@ -31,8 +31,8 @@ NEO4J_URI      = os.environ.get("NEO4J_URI",      "bolt://neo4j:7687")
 NEO4J_USER     = os.environ.get("NEO4J_USER",     "neo4j")
 NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "changeme")
 
-MATCH_THRESHOLD = float(os.environ.get("SPLINK_THRESHOLD", "0.8"))
-MAX_PESSOAS     = int(os.environ.get("SPLINK_MAX_PESSOAS", "2000000"))
+SPLINK_THRESHOLD = float(os.environ.get("SPLINK_THRESHOLD", "0.8"))
+SPLINK_MAX_PESSOAS = int(os.environ.get("SPLINK_MAX_PESSOAS", "200000"))
 BATCH           = int(os.environ.get("NEO4J_BATCH", "500"))
 
 
