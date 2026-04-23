@@ -67,6 +67,29 @@ def get_pessoa(cpf: str):
             cpf=cpf,
         ).data()
 
+        # Verifica se a pessoa é parlamentar (via MESMO_QUE com Parlamentar)
+        parlamentar = s.run(
+            """
+            MATCH (p:Pessoa {cpf: $cpf})-[:MESMO_QUE]-(par:Parlamentar)
+            RETURN par.codigo_autor AS parlamentar_id,
+                   par.nome_autor AS nome_parlamentar
+            LIMIT 1
+            """,
+            cpf=cpf,
+        ).single()
+
+        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
+        if not parlamentar:
+            parlamentar = s.run(
+                """
+                MATCH (par:Parlamentar {cpf: $cpf})
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlamentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
+
     return {
         "pessoa":           pessoa,
         "socios":           socios,
@@ -74,4 +97,5 @@ def get_pessoa(cpf: str):
         "candidaturas":     candidaturas,
         "sancoes_indiretas": sancoes_indir,
         "duplicatas":       duplicatas,
+        "parlamentar":      dict(parlamentar) if parlamentar else None,
     }
