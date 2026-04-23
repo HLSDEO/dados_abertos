@@ -5,7 +5,7 @@ router = APIRouter(prefix="/empresa", tags=["empresa"])
 
 
 @router.get("/{cnpj_basico}")
-def get_empresa(cnpj_basico: str):
+def get_empresa(cnpj_basico: str, limit: int = Query(100, ge=1, le=100)):
     driver = get_driver()
     with driver.session() as s:
 
@@ -22,8 +22,9 @@ def get_empresa(cnpj_basico: str):
             RETURN p.cpf AS cpf, p.nome AS nome,
                    r.qualificacao AS qualificacao, r.data_entrada AS data_entrada
             ORDER BY r.data_entrada DESC
+            LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
         socios_pj = s.run(
@@ -32,8 +33,9 @@ def get_empresa(cnpj_basico: str):
             RETURN soc.cnpj_basico AS cnpj_basico, soc.razao_social AS razao_social,
                    r.qualificacao AS qualificacao, r.data_entrada AS data_entrada
             ORDER BY r.data_entrada DESC
+            LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
         sancoes = s.run(
@@ -43,8 +45,9 @@ def get_empresa(cnpj_basico: str):
                    san.data_fim_sancao AS fim, san.motivo_sancao AS motivo,
                    san.orgao_sancionador AS orgao
             ORDER BY san.data_inicio_sancao DESC
+            LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
         contratos = s.run(
@@ -54,9 +57,9 @@ def get_empresa(cnpj_basico: str):
                    c.valor_global AS valor, c.data_assinatura AS data,
                    c.ano AS ano
             ORDER BY c.data_assinatura DESC
-            LIMIT 50
+            LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
         emendas = s.run(
@@ -67,9 +70,9 @@ def get_empresa(cnpj_basico: str):
             RETURN parl.nome_autor AS parlamentar, em.codigo_emenda AS codigo,
                    em.valor_empenhado AS valor, em.ano AS ano, m.nome AS municipio
             ORDER BY em.ano DESC
-            LIMIT 50
+            LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
         similares = s.run(
@@ -77,9 +80,9 @@ def get_empresa(cnpj_basico: str):
             MATCH (e:Empresa {cnpj_basico: $cnpj})-[r:SIMILAR_A]-(e2:Empresa)
             RETURN e2.cnpj_basico AS cnpj_basico, e2.razao_social AS razao_social,
                    r.score AS score
-            ORDER BY r.score DESC LIMIT 20
+            ORDER BY r.score DESC LIMIT $limit
             """,
-            cnpj=cnpj_basico,
+            cnpj=cnpj_basico, limit=limit,
         ).data()
 
     return {
