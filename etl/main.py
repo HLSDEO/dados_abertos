@@ -86,6 +86,7 @@ DOWNLOADS = {
     "pgfn":                 "download/9-pgfn.py",
     "camara":               "download/11-camara.py",
     "bndes":                "download/12-bndes.py",
+    "senado":               "download/13-senado.py",
 }
 
 PIPELINES = {
@@ -100,6 +101,7 @@ PIPELINES = {
     "pgfn":             "pipeline/9-pgfn.py",
     "camara":           "pipeline/11-camara.py",
     "bndes":            "pipeline/12-bndes.py",
+    "senado":            "pipeline/13-senado.py",
 }
 
 ANALYTICS = {

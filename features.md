@@ -52,23 +52,26 @@ Itens organizados por prioridade e dependência. Marcar com `[x]` ao concluir.
 - Habilita: padrão `debtor_contracts` — inadimplente recebendo contrato público
 
 ### 2.3 BNDES — Empréstimos (~3–4h)
-- [ ] Criar `etl/download/10-bndes.py`
-  - Fonte: https://dadosabertos.bndes.gov.br
-  - Formato: CSV
-- [ ] Criar `etl/pipeline/10-bndes.py`
-  - Nó: `(:Emprestimo {emprestimo_id, valor, data_contratacao, produto, setor})`
-  - Relação: `(:Empresa)-[:RECEBEU_EMPRESTIMO]->(:Emprestimo)`
+- [x] Criar `etl/download/12-bndes.py`
+   - Fonte: https://dadosabertos.bndes.gov.br
+   - Formato: CSV via CKAN datastore API
+   - Recursos: operações não automáticas + operações indiretas automáticas
+- [x] Criar `etl/pipeline/12-bndes.py`
+   - Nó: `(:Emprestimo {emprestimo_id, valor_contratado_reais, data_da_contratacao, produto, setor_bndes})`
+   - Relação: `(:Empresa {cnpj_basico})-[:RECEBEU_EMPRESTIMO]->(:Emprestimo)`
+- [x] Atualizar `etl/main.py` com novos módulos
 - Habilita: fluxo completo de dinheiro público (contrato + emenda + empréstimo)
 
 ### 2.4 Despesas Câmara dos Deputados (~6–8h)
-- [ ] Criar `etl/download/11-camara.py`
-  - Fonte: https://dadosabertos.camara.leg.br (API REST paginada)
-  - Baixar por ano, todas as despesas CEAP
-- [ ] Criar `etl/pipeline/11-camara.py`
-  - Nó: `(:Despesa {despesa_id, tipo_despesa, valor_liquido, data_emissao, ano, mes})`
-  - Relações:
-    - `(:Parlamentar)-[:GASTOU]->(:Despesa)`
-    - `(:Empresa)-[:FORNECEU]->(:Despesa)` — via CNPJ do fornecedor
+- [x] Criar `etl/download/11-camara.py`
+   - Fonte: https://dadosabertos.camara.leg.br (arquivos ZIP por ano)
+   - Formato: CSV
+- [x] Criar `etl/pipeline/11-camara.py`
+   - Nó: `(:Despesa {despesa_id, tipo_despesa, valor_liquido, data_emissao, ano, mes})`
+   - Relações:
+     - `(:Parlamentar)-[:GASTOU]->(:Despesa)`
+     - `(:Empresa)-[:FORNECEU]->(:Despesa)` — via CNPJ do fornecedor
+- [x] Atualizar rota `/pessoa/{cpf}` para incluir ID do parlamentar (se houver)
 - Habilita: padrão `parlamentar × fornecedor` — deputado gasta com empresa que recebe emenda dele
 
 ### 2.5 Despesas Senado Federal (~4–6h)
