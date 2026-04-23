@@ -82,10 +82,11 @@ Documentação interativa: http://localhost:8000/docs
 | Endpoint | Descrição |
 | :--- | :--- |
 | `GET /search?q=texto` | Busca fulltext em todos os tipos de entidade |
-| `GET /pessoa/{cpf}` | Perfil: sócios, servidor, candidaturas, sanções indiretas |
+| `GET /pessoa/{cpf}` | Perfil: sócios, servidor, candidaturas, sanções indiretas, parlamentar (se houver) |
 | `GET /empresa/{cnpj_basico}` | Perfil: sócios, sanções, contratos, emendas, similares |
-| `GET /parlamentar/{id}` | Perfil: emendas, empresas beneficiadas, doadores |
-| `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges) |
+| `GET /parlamentar/{parlamentar_id}` | Perfil: emendas, empresas beneficiadas, doadores, sanções indiretas. Busca por `id_camara`, `id_senado`, `id` ou `cpf` |
+| `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges). Retorna `nome` e `razao_social` proeminentes |
+| `GET /patterns/{cnpj_basico}` | Padrões de corrupção/irregularidade. Novos: `debtor_contracts`, `expense_supplier_overlap`, `bndes_sanction_overlap` |
 | `GET /docs` | Swagger UI |
 
 ## Consultas úteis no Neo4j
