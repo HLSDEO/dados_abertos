@@ -89,6 +89,36 @@ Documentação interativa: http://localhost:8000/docs
 | `GET /patterns/{cnpj_basico}` | Padrões de corrupção/irregularidade. Novos: `debtor_contracts`, `expense_supplier_overlap`, `bndes_sanction_overlap`, `enrichment_signal` |
 | `GET /docs` | Swagger UI |
 
+#### PATTERNS
+
+Endpoint `GET /patterns/{cnpj_basico}` — motor de padrões de corrupção/irregularidade. Retorna apenas padrões disparados (`triggered=true`) com evidências.
+
+| ID | Nome | O que detecta | Dados usados | Status |
+|---|---|---|---|---|
+| `sanctioned_contract` | Empresa sancionada recebendo contrato | Sanção vigente se sobrepõe à data do contrato | `Sancao` × `Contrato` | ✅ |
+| `sanctioned_bid` | Empresa sancionada com licitação publicada | Sanção vigente se sobrepõe à data da licitação | `Sancao` × `Licitacao` | ✅ |
+| `amendment_owner` | Parlamentar destina emenda para empresa onde é sócio | Parlamentar → Emenda → Empresa ← Sócio ← Pessoa (parlamentar) | `Emenda` × `MESMO_QUE` | ✅ |
+| `contract_concentration` | Concentração de contratos ≥60% num órgão | Agregação de `FIRMOU_CONTRATO` por órgão | `Contrato` | ✅ |
+| `split_contracts` | Fracionamento de contratos < R$80k | Múltiplos contratos no mesmo órgão abaixo do limite | `Contrato` | ✅ |
+| `inexigibility_recurrence` | Inexigibilidade recorrente ≥3 contratações | Múltiplos contratos diretos via inexigibilidade | `Contrato` × `Licitacao` | ✅ |
+| `servant_company` | Servidor público ativo sócio da empresa contratada | Servidor ativo vinculado à empresa que recebe contrato | `Servidor` × `SOCIO_DE` × `FIRMOU_CONTRATO` | ✅ |
+| `donation_contract` | Empresa doadora com contratos públicos (correlação) | Doação de campanha seguida de contrato no mesmo ano | `DOOU_PARA` × `FIRMOU_CONTRATO` | ✅ |
+| `debtor_contracts` | Inadimplente recebendo contrato público | Dívida ativa (PGFN) vigente se sobrepõe ao contrato | `DividaAtiva` × `FIRMOU_CONTRATO` | ✅ |
+| `expense_supplier_overlap` | Parlamentar gasta CEAP com empresa que recebeu emenda | Deputado gasta com fornecedor que recebeu sua emenda | `Despesa` × `BENEFICIOU` (Câmara) | ✅ |
+| `bndes_sanction_overlap` | Empresa recebe BNDES e está sancionada | Empréstimo BNDES + Sanção vigente na mesma empresa | `Emprestimo` × `Sancao` | ✅ |
+| `enrichment_signal` | Sócio servidor com patrimônio declarado suspeito | Servidor público com bens declarados > R$ 500k (TSE) | `BemDeclarado` × `EH_SERVIDOR` × `DECLAROU_BEM` | ✅ |
+
+## Arquitetura
+
+| Camada | Tecnologia |
+| :--- | :--- |
+| Banco de Grafo | Neo4j 5 Community + GDS |
+| API | FastAPI (Python 3.12+) |
+| Frontend | — (a implementar) |
+| ETL | Python 3.12 (pandas, splink opcional) |
+| Infra | Docker Compose |
+
+
 ## Consultas úteis no Neo4j
 
 ### Busca fulltext
@@ -106,16 +136,6 @@ MATCH (r:IngestionRun {source_id: source, started_at: last})
 RETURN source, r.status, r.rows_in, r.rows_out, r.started_at
 ORDER BY source
 ```
-
-## Arquitetura
-
-| Camada | Tecnologia |
-| :--- | :--- |
-| Banco de Grafo | Neo4j 5 Community + GDS |
-| API | FastAPI (Python 3.12+) |
-| Frontend | — (a implementar) |
-| ETL | Python 3.12 (pandas, splink opcional) |
-| Infra | Docker Compose |
 
 ## Features
 
