@@ -32,12 +32,12 @@ def _serialize_node(node) -> dict:
     uid   = f"{label}:{node.get(key)}" if key and node.get(key) else f"eid:{node.element_id}"
 
     # Prioriza nome/razão social conforme o tipo de nó
-    nome          = (node.get("nome") or node.get("razao_social"))
-                   or node.get("nome_autor") or node.get("sigla") or ""
-    razao_social  = node.get("razao_social") or ""
-    cpf_cnpj       = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
-    razao_social  = node.get("razao_social") or ""
-    cpf_cnpj       = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
+    nome = (node.get("nome") or node.get("razao_social")
+    if not nome:
+        nome = (node.get("nome_autor") or node.get("sigla") or "")
+    
+    razao_social = node.get("razao_social") or ""
+    cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
 
     # Propriedades completas (todas as que existem no nó)
     props = {k: node.get(k) for k in _NODE_DISPLAY if node.get(k) is not None}
