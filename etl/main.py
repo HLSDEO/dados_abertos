@@ -84,8 +84,8 @@ DOWNLOADS = {
     "sancoes_cgu":          "download/7-sancoes_cgu.py",
     "pncp":                 "download/8-pncp.py",
     "pgfn":                 "download/9-pgfn.py",
-    "cpgf":                 "download/10-cpgf.py",
     "camara":               "download/11-camara.py",
+    "bndes":                "download/12-bndes.py",
 }
 
 PIPELINES = {
@@ -99,6 +99,7 @@ PIPELINES = {
     "pncp":             "pipeline/8-pncp.py",
     "pgfn":             "pipeline/9-pgfn.py",
     "camara":           "pipeline/11-camara.py",
+    "bndes":            "pipeline/12-bndes.py",
 }
 
 ANALYTICS = {
