@@ -262,8 +262,35 @@ PATTERNS: list[dict] = [
         """,
     },
 
-    # ── LOW RISK ─────────────────────────────────────────────────────────────
+    {
+        "id": "enrichment_signal",
+        "name_pt": "Sócio servidor com patrimônio declarado suspeito",
+        "risk_level": "medium",
+        "cypher": """
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})<-[:SOCIO_DE]-(p:Pessoa)
+            WHERE EXISTS { (p)-[:EH_SERVIDOR]->(:Servidor) }
+              AND EXISTS { (p)-[:DECLAROU_BEM]->(:BemDeclarado) }
+            MATCH (p)-[:EH_SERVIDOR]->(srv:Servidor)
+            MATCH (p)-[:DECLAROU_BEM]->(b:BemDeclarado)
+            WITH p, srv, sum(b.valor) AS total_bens,
+                 collect(DISTINCT {
+                     tipo:  "Servidor",
+                     id:    srv.id_servidor,
+                     label: srv.nome + " — " + srv.cargo + " (" + srv.org_exercicio + ")"
+                 })[..3] AS ev_servidor,
+                 collect(DISTINCT {
+                     tipo:  "BemDeclarado",
+                     id:    b.bem_id,
+                     label: b.tipo_bem + " — R$ " + toString(b.valor) + " (" + toString(b.ano_eleicao) + ")"
+                 })[..5] AS ev_bens
+            WHERE total_bens > 1500000
+            RETURN count(DISTINCT p) AS count,
+                   total_bens AS valor_total,
+                   ev_servidor + ev_bens AS evidence
+        """,
+    },
 
+    # ── LOW RISK ─────────────────────────────────────
     {
         "id": "donation_contract",
         "name_pt": "Empresa doadora de campanha com contratos públicos (correlação)",
