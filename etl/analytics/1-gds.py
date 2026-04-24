@@ -15,7 +15,8 @@ Algoritmos executados (em ordem):
 
 Labels projetados:
   Empresa, Pessoa, Partner, Municipio, Estado, Parlamentar,
-  Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao
+  Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao,
+  ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao
 
 Propriedades gravadas nos nós:
   gds_comunidade   (Louvain)
