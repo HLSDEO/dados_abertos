@@ -23,6 +23,7 @@ Uso:
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
   --workers N   ZIPs processados em paralelo (default: 2)
+  --limite N   Número máximo de linhas a processar (para testes rápidos)
   --history     Processa todos os snapshots (só pipelines que suportam)
   --full        No comando 'run': executa analytics após pipeline
   --eleicao ANO Ano de eleição — repetível (ex: --eleicao 2024 --eleicao 2022)
