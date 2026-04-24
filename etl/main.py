@@ -135,6 +135,7 @@ def _parse_flags(flags: list[str]) -> dict:
         "full":       False,
         "chunk_size": DEFAULT_CHUNK_SIZE,
         "workers":    DEFAULT_WORKERS,
+        "limite":     None,
         "eleicoes":   [],   # --eleicao ANO (repetível)
         "anos":       [],   # --ano ANO    (repetível)
         "meses":      [],   # --mes MES    (repetível)
@@ -146,7 +147,7 @@ def _parse_flags(flags: list[str]) -> dict:
             opts["history"] = True
         elif f == "--full":
             opts["full"] = True
-        elif f in ("--chunk", "--workers", "--eleicao", "--ano", "--mes"):
+        elif f in ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes"):
             if i + 1 < len(flags):
                 try:
                     val = int(flags[i + 1])
@@ -158,6 +159,8 @@ def _parse_flags(flags: list[str]) -> dict:
                     opts["chunk_size"] = val
                 elif f == "--workers":
                     opts["workers"] = val
+                elif f == "--limite":
+                    opts["limite"] = val
                 elif f == "--eleicao":
                     opts["eleicoes"].append(val)
                 elif f == "--ano":
@@ -222,6 +225,10 @@ def do_pipeline(names: list[str], opts: dict):
             kwargs["history"] = opts["history"]
         if "chunk_size" in sig.parameters:
             kwargs["chunk_size"] = opts["chunk_size"]
+        if "limite" in sig.parameters:
+            kwargs["limite"] = opts["limite"]
+            if opts["limite"] is not None:
+                log.info(f"  limite={opts['limite']:,}")
         if "eleicoes" in sig.parameters:
             kwargs["eleicoes"] = opts["eleicoes"] or None
             if kwargs["eleicoes"]:
