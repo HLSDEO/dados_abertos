@@ -278,7 +278,7 @@ def main():
     while i < len(rest):
         if rest[i].startswith("--"):
             raw_flags.append(rest[i])
-            if rest[i] in ("--chunk", "--workers", "--eleicao", "--ano", "--mes") \
+            if rest[i] in ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes") \
                     and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
