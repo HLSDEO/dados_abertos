@@ -155,12 +155,14 @@ def _transform_chunk(chunk: list[dict]) -> list[dict]:
     return result
 
 
-def _load_bndes(driver) -> None:
+def _load_bndes(driver, limite: int | None = None, stats: dict = None) -> None:
     """Carrega todos os CSVs do BNDES."""
     todos = sorted(DATA_DIR.glob("operacoes_*.csv"))
     if not todos:
         log.warning("  Nenhum arquivo operacoes_*.csv encontrado — execute download bndes primeiro")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
@@ -168,17 +170,28 @@ def _load_bndes(driver) -> None:
 
         with driver.session() as session:
             for chunk in iter_csv(path, delimiter="auto"):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [bndes] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 transformed = _transform_chunk(chunk)
                 if transformed:
                     run_batches(session, Q_EMPRESTIMO_EMPRESA, transformed)
                     total_rows += len(transformed)
+                    stats['total'] += len(transformed)
 
         log.info(f"    ✓ {path.name}  {total_rows:,} empréstimos carregados")
 
 
 # ── Entry-point ─────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[bndes] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -191,7 +204,8 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
 
     with IngestionRun(driver, "bndes"):
         log.info("  [1/1] Empréstimos → Emprestimo, RECEBEU_EMPRESTIMO...")
-        _load_bndes(driver)
+        stats = {'total': 0}
+        _load_bndes(driver, limite, stats)
 
     driver.close()
     log.info("[bndes] Pipeline concluído")
