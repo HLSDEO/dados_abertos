@@ -68,7 +68,7 @@ docker compose build --no-cache etl
 | emendas_cgu | CGU — emendas parlamentares | Emenda, Parlamentar |
 | tse | TSE — candidatos a eleições e doadores | Pessoa, Partido, Eleicao |
 | sancoes_cgu | CGU — sanções aplicadas a empresas | Sancao |
-| pncp | Portal Nacional de Contratações Públicas | Contrato, Licitacao |
+| pncp | Portal Nacional de Contratações Públicas | ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao |
 | tesouro_transparente | Ordens bancárias de emendas parlamentares | — |
 | pgfn | PGFN — dívida ativa (não previdenciária e previdenciária) | DividaAtiva |
 | camara | Câmara dos Deputados — despesas CEAP | Despesa, Parlamentar |
