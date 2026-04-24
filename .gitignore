@@ -6,3 +6,4 @@
 *.xlsx
 /etl/data/
 *.pyc
+/.kilo
