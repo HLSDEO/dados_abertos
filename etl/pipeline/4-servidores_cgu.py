@@ -159,10 +159,22 @@ def _discover_periodos() -> list[tuple[int, int]]:
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
-def _load_cadastro(driver, path: Path) -> int:
+def _load_cadastro(driver, path: Path, limite: int | None = None, stats: dict = None) -> int:
     total = 0
+    if stats is None:
+        stats = {'total': 0}
     with driver.session() as session:
         for chunk in iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [cadastro] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
+
             # 1. cria/atualiza nós :Servidor
             run_batches(session, Q_SERVIDOR, chunk)
 
@@ -196,14 +208,27 @@ def _load_cadastro(driver, path: Path) -> int:
                 run_batches(session, Q_SERVIDOR_MUNICIPIO, com_mun)
 
             total += len(chunk)
+            stats['total'] += len(chunk)
 
     return total
 
 
-def _load_remuneracao(driver, path: Path) -> int:
+def _load_remuneracao(driver, path: Path, limite: int | None = None, stats: dict = None) -> int:
     total = 0
+    if stats is None:
+        stats = {'total': 0}
     with driver.session() as session:
         for chunk in iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [remuneracao] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
+
             for r in chunk:
                 r["remuneracao_id"] = (
                     f"{r.get('id_servidor','')}_{r.get('fonte_categoria','')} "
@@ -218,13 +243,15 @@ def _load_remuneracao(driver, path: Path) -> int:
             run_batches(session, Q_REMUNERACAO_NOS, chunk)
             run_batches(session, Q_REMUNERACAO_REL, chunk)
             total += len(chunk)
+            stats['total'] += len(chunk)
+
     return total
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
-        anos: list[int] | None = None, meses: list[int] | None = None):
+        anos: list[int] | None = None, meses: list[int] | None = None, limite: int | None = None):
     log.info(f"[servidores] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     periodos = _discover_periodos()
@@ -252,7 +279,11 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
             session.run(q)
 
     with IngestionRun(driver, "servidores_cgu") as run_ctx:
+        stats = {'total': 0}
         for ano, mes in periodos:
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"  Limite de {limite:,} linhas atingido. Parando.")
+                break
             mes_dir  = DATA_DIR / str(ano) / f"{mes:02d}"
             cad_path = mes_dir / "cadastro.csv"
             rem_path = mes_dir / "remuneracao.csv"
@@ -260,15 +291,42 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
 
             if cad_path.exists():
                 log.info("  [cadastro]...")
-                n = _load_cadastro(driver, cad_path)
+                n = _load_cadastro(driver, cad_path, limite, stats)
                 run_ctx.add(n)
                 log.info(f"    ✓ {n:,} servidores")
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    Limite de {limite:,} atingido após cadastro. Parando.")
+                    break
 
-            if rem_path.exists():
+            if rem_path.exists() and (limite is None or stats['total'] < limite):
                 log.info("  [remuneracao]...")
-                n = _load_remuneracao(driver, rem_path)
+                n = _load_remuneracao(driver, rem_path, limite, stats)
                 run_ctx.add(n)
                 log.info(f"    ✓ {n:,} registros")
 
     driver.close()
     log.info("[servidores] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline Servidores CGU — carrega servidores públicos no Neo4j")
+    parser.add_argument("--anos", type=int, nargs="*", default=None, help="Filtrar anos (ex: --anos 2023 2024)")
+    parser.add_argument("--meses", type=int, nargs="*", default=None, help="Filtrar meses (ex: --meses 1 2)")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        anos=args.anos,
+        meses=args.meses,
+        limite=args.limite,
+    )
