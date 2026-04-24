@@ -134,20 +134,31 @@ def _transform_chunk(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
     return parlamentar_rows, empresa_rows
 
 
-def _load_despesas(driver) -> None:
+def _load_despesas(driver, limite: int | None = None, stats: dict = None) -> None:
     """Carrega todos os CSVs de despesas."""
     todos = sorted(DATA_DIR.glob("despesas_*.csv"))
     if not todos:
         log.warning("  Nenhum arquivo despesas_*.csv encontrado — execute download camara primeiro")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
         parlamentar_t = empresa_t = skip_t = 0
 
         with driver.session() as session:
-            # Primeiro passo: cria/atualiza Parlamentares
             for chunk in iter_csv(path):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [despesas] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 parlamentar_rows, empresa_rows = _transform_chunk(chunk)
                 skip_t += len(chunk) - len(parlamentar_rows) - len(empresa_rows)
 
@@ -155,17 +166,19 @@ def _load_despesas(driver) -> None:
                     run_batches(session, Q_PARLAMENTAR, parlamentar_rows)
                     run_batches(session, Q_DESPESA, parlamentar_rows)
                     parlamentar_t += len(parlamentar_rows)
+                    stats['total'] += len(parlamentar_rows)
 
                 if empresa_rows:
                     run_batches(session, Q_DESPESA_EMPRESA, empresa_rows)
                     empresa_t += len(empresa_rows)
+                    # Não contar empresas no limite global (só despesas)
 
         log.info(f"    ✓ {path.name}  Parlamentar={parlamentar_t:,}  Empresa={empresa_t:,}  sem_id={skip_t:,}")
 
 
 # ── Entry-point ────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[camara] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -178,7 +191,28 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
 
     with IngestionRun(driver, "camara"):
         log.info("  [1/1] Parlamentar + Despesa → GASTOU, FORNECEU...")
-        _load_despesas(driver)
+        stats = {'total': 0}
+        _load_despesas(driver, limite, stats)
 
     driver.close()
     log.info("[camara] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline Câmara — carrega despesas CEAP no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )
