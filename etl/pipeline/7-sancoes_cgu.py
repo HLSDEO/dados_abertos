@@ -198,11 +198,23 @@ def _t_sancoes(chunk: list[dict], tipo_registro: str) -> dict:
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
-def _load_dataset(driver, path: Path, tipo_registro: str) -> None:
+def _load_dataset(driver, path: Path, tipo_registro: str, limite: int | None = None, stats: dict = None) -> None:
     total_s = total_e = total_p = 0
+    if stats is None:
+        stats = {'total': 0}
 
     with driver.session() as session:
         for chunk in iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [{tipo_registro}] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
+
             t = _t_sancoes(chunk, tipo_registro)
 
             if t["orgaos"]:
@@ -210,6 +222,7 @@ def _load_dataset(driver, path: Path, tipo_registro: str) -> None:
             if t["sancoes"]:
                 run_batches(session, Q_SANCAO, t["sancoes"])
                 total_s += len(t["sancoes"])
+                stats['total'] += len(t["sancoes"])
             if t["com_orgao"]:
                 run_batches(session, Q_SANCAO_ORGAO, t["com_orgao"])
             if t["empresas"]:
@@ -224,7 +237,7 @@ def _load_dataset(driver, path: Path, tipo_registro: str) -> None:
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[sancoes_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -236,10 +249,34 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             session.run(q)
 
     with IngestionRun(driver, "sancoes_cgu"):
+        stats = {'total': 0}
         for dataset, tipo in [("ceis", "CEIS"), ("cnep", "CNEP")]:
             path = DATA_DIR / f"{dataset}.csv"
             log.info(f"  [{tipo}]...")
-            _load_dataset(driver, path, tipo)
+            _load_dataset(driver, path, tipo, limite, stats)
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"  Limite de {limite:,} linhas atingido após {tipo}. Parando.")
+                break
 
     driver.close()
     log.info("[sancoes_cgu] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline Sanções CGU — carrega CEIS e CNEP no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )

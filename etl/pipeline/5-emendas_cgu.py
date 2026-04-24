@@ -637,3 +637,23 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
 
     driver.close()
     log.info("[emendas_cgu] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline Emendas CGU — carrega emendas parlamentares no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )

@@ -384,19 +384,33 @@ def _build_sq_cpf_map(cand_dir: Path,
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
 def _load_candidatos(driver, data_dir: Path,
-                     eleicoes: list[int] | None = None) -> None:
+                     eleicoes: list[int] | None = None,
+                     limite: int | None = None,
+                     stats: dict = None) -> None:
     todos = sorted(data_dir.glob("candidatos_*.csv"), key=lambda p: p.stem)
     if eleicoes:
         todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
     if not todos:
         log.warning("  Nenhum arquivo candidatos_*.csv encontrado (verifique --eleicao)")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
         total = 0
         with driver.session() as session:
             for chunk in iter_csv(path):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [candidatos] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 t = _t_candidatos(chunk)
 
                 if t["partidos"]:
@@ -412,6 +426,7 @@ def _load_candidatos(driver, data_dir: Path,
                 if t["candidatos"]:
                     run_batches(session, Q_CANDIDATO, t["candidatos"])
                     total += len(t["candidatos"])
+                    stats['total'] += len(t["candidatos"])
                 if t["filiacoes"]:
                     run_batches(session, Q_FILIACAO, t["filiacoes"])
 
@@ -420,7 +435,9 @@ def _load_candidatos(driver, data_dir: Path,
 
 def _load_doacoes(driver, data_dir: Path,
                   sq_cpf: dict[str, str],
-                  eleicoes: list[int] | None = None) -> None:
+                  eleicoes: list[int] | None = None,
+                  limite: int | None = None,
+                  stats: dict = None) -> None:
     todos = sorted(data_dir.glob("doacoes_*.csv"))
     if eleicoes:
         todos = [p for p in todos
@@ -429,20 +446,34 @@ def _load_doacoes(driver, data_dir: Path,
     if not todos:
         log.warning("  Nenhum arquivo doacoes_*.csv encontrado (verifique --eleicao)")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
         pf_t = pj_t = skip_t = 0
         with driver.session() as session:
             for chunk in iter_csv(path):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [doacoes] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 pf, pj = _t_doacoes(chunk, sq_cpf)
                 skip_t += len(chunk) - len(pf) - len(pj)
                 if pf:
                     run_batches(session, Q_DOACAO_PF, pf)
                     pf_t += len(pf)
+                    stats['total'] += len(pf)
                 if pj:
                     run_batches(session, Q_DOACAO_PJ, pj)
                     pj_t += len(pj)
+                    stats['total'] += len(pj)
         log.info(f"    ✓ {path.name}  PF={pf_t:,}  PJ={pj_t:,}  sem_cpf={skip_t:,}")
 
 
@@ -477,7 +508,9 @@ def _t_bens(chunk: list[dict], sq_cpf: dict[str, str]) -> list[dict]:
 
 def _load_bens(driver, data_dir: Path,
                sq_cpf: dict[str, str],
-               eleicoes: list[int] | None = None) -> None:
+               eleicoes: list[int] | None = None,
+               limite: int | None = None,
+               stats: dict = None) -> None:
     todos = sorted(data_dir.glob("bens_*.csv"))
     if eleicoes:
         todos = [p for p in todos
@@ -486,25 +519,38 @@ def _load_bens(driver, data_dir: Path,
     if not todos:
         log.warning("  Nenhum arquivo bens_*.csv encontrado (execute download tse primeiro)")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
         total = skip = 0
         with driver.session() as session:
             for chunk in iter_csv(path):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [bens] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 rows = _t_bens(chunk, sq_cpf)
                 skip += len(chunk) - len(rows)
                 if rows:
                     run_batches(session, Q_BEM, rows)
                     run_batches(session, Q_DECLAROU_BEM, rows)
                     total += len(rows)
+                    stats['total'] += len(rows)
         log.info(f"    ✓ {path.name}  {total:,} bens  sem_cpf={skip:,}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
-        eleicoes: list[int] | None = None):
+        eleicoes: list[int] | None = None, limite: int | None = None):
     """
     eleicoes: lista de anos a carregar. None = todos os disponíveis.
     Passado pelo CLI via --eleicao 2024 --eleicao 2022.
@@ -528,16 +574,25 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         bens_dir = DATA_DIR / "bens"
 
         log.info("  [1/3] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
-        _load_candidatos(driver, cand_dir, eleicoes)
+        stats = {'total': 0}
+        _load_candidatos(driver, cand_dir, eleicoes, limite, stats)
+        if limite is not None and stats['total'] >= limite:
+            log.info(f"  Limite de {limite:,} linhas atingido após candidatos. Parando.")
+            driver.close()
+            return
 
         log.info("  Construindo mapa sq_candidato → cpf...")
         sq_cpf = _build_sq_cpf_map(cand_dir, eleicoes)
 
         log.info("  [2/3] Doações → DOOU_PARA...")
-        _load_doacoes(driver, doac_dir, sq_cpf, eleicoes)
+        _load_doacoes(driver, doac_dir, sq_cpf, eleicoes, limite, stats)
+        if limite is not None and stats['total'] >= limite:
+            log.info(f"  Limite de {limite:,} linhas atingido após doacoes. Parando.")
+            driver.close()
+            return
 
         log.info("  [3/3] Bens declarados → BemDeclarado, DECLAROU_BEM...")
-        _load_bens(driver, bens_dir, sq_cpf, eleicoes)
+        _load_bens(driver, bens_dir, sq_cpf, eleicoes, limite, stats)
 
         log.info("  Linkando municípios TSE → IBGE...")
         with driver.session() as session:
@@ -546,3 +601,25 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
 
     driver.close()
     log.info("[tse] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline TSE — carrega candidatos, doações e bens no Neo4j")
+    parser.add_argument("--eleicao", type=int, action="append", default=None, help="Ano(s) da eleição (ex: --eleicao 2024 --eleicao 2022)")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        eleicoes=args.eleicao,
+        limite=args.limite,
+    )
