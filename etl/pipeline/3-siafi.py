@@ -248,7 +248,7 @@ def _read_xlsx(path: Path) -> list[dict]:
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info("[siafi] Pipeline unidades gestoras")
 
     if not XLSX_PATH.exists():
@@ -260,13 +260,12 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     if not rows:
         return
 
+    if limite is not None:
+        rows = rows[:limite]
+        log.info(f"  Limite de {limite:,} linhas aplicado. Carregando {len(rows):,} UASGs.")
+
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
     setup_schema(driver)
-
-    with driver.session() as session:
-        log.info("  Constraints e índices...")
-        for q in Q_CONSTRAINTS + Q_INDEXES:
-            session.run(q)
 
     with IngestionRun(driver, "siafi") as run_ctx:
         # ordem: Esfera → Orgao → UnidadeGestora → vínculos geográficos
@@ -305,3 +304,23 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
 
     driver.close()
     log.info("[siafi] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline SIAFI — carrega unidades gestoras no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )
