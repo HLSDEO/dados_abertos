@@ -137,12 +137,14 @@ def _transform_item(item: dict) -> tuple[dict | None, dict | None]:
     return base, empresa
 
 
-def _load_senado(driver) -> None:
+def _load_senado(driver, limite: int | None = None, stats: dict = None) -> None:
     """Carrega todos os JSONs de despesas do Senado."""
     todos = sorted(DATA_DIR.glob("despesas_*.json"))
     if not todos:
         log.warning("  Nenhum arquivo despesas_*.json encontrado — execute download senado primeiro")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
@@ -157,7 +159,18 @@ def _load_senado(driver) -> None:
 
         # Processa em chunks
         for i in range(0, len(data), CHUNK_SIZE):
-            chunk = data[i:i + CHUNK_SIZE]
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [senado] Limite de {limite:,} atingido. Parando.")
+                return
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    return
+                # Limita o chunk
+                chunk = data[i:i + restante] if restante < CHUNK_SIZE else data[i:i + CHUNK_SIZE]
+            else:
+                chunk = data[i:i + CHUNK_SIZE]
+
             parlamentar_rows = []
             empresa_rows = []
 
@@ -173,6 +186,7 @@ def _load_senado(driver) -> None:
                     run_batches(session, Q_PARLAMENTAR, parlamentar_rows)
                     run_batches(session, Q_DESPESA, parlamentar_rows)
                     parlamentar_t += len(parlamentar_rows)
+                    stats['total'] += len(parlamentar_rows)
 
                 if empresa_rows:
                     with driver.session() as session:
