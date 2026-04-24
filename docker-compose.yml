@@ -14,9 +14,9 @@ services:
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme}"
       NEO4J_PLUGINS: '["apoc"]'
-      NEO4J_server_memory_heap_initial__size: "2g"
-      NEO4J_server_memory_heap_max__size:     "4g"
-      NEO4J_server_memory_pagecache_size:     "4g"
+      NEO4J_server_memory_heap_initial__size: "4g"
+      NEO4J_server_memory_heap_max__size:     "8g"
+      NEO4J_server_memory_pagecache_size:     "12g"
       TZ:                America/Sao_Paulo
     volumes:
       - neo4j_data:/data
@@ -29,7 +29,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-      start_period: 60s
+      start_period: 180s
 
   # ── API ────────────────────────────────────────────────────────────────────
   api:
