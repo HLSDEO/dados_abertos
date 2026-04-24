@@ -229,47 +229,75 @@ def _t_itens(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict], lis
 def _t_contratos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     """
     Parse do CSV comprasnet-contratos-anual-contratos.
+    Colunas esperadas (exemplo):
+      id, numero, orgao_codigo, orgao_nome, fornecedor_tipo,
+      fonecedor_cnpj_cpf_idgener, fornecedor_nome, objeto,
+      data_assinatura, data_publicacao, valor_global, ...
     """
     contratos, fornecedores, orgaos, vinculos = [], [], [], []
     seen_forn = set()
-    seen_org = set()
+    # Orgaos não são criados a partir de contratos pois não há CNPJdo órgão neste CSV
 
     for r in chunk:
-        cnpj_org = _safe_str(r.get("cnpj_ente") or r.get("cnpj_orgao") or r.get("cnpj") or "")
-        if not cnpj_org:
+        # ID único do contrato (campo 'id')
+        contrato_id = _safe_str(r.get("id") or r.get("contrato_id") or "")
+        if not contrato_id:
             continue
 
-        ano         = _safe_int(r.get("ano_contrato") or r.get("ano") or "")
-        num_contrato= _safe_str(r.get("numero_contrato") or "")
-        seq         = _safe_str(r.get("sequencial") or "1")
-        valor       = _safe_float(r.get("valor_global") or r.get("valor") or 0)
-        objeto      = _safe_str(r.get("objeto") or "")
+        # Número do contrato (campo 'numero')
+        num_contrato = _safe_str(r.get("numero") or r.get("numero_contrato") or "")
+        # Data de assinatura (para ano)
         data_ass    = _safe_str(r.get("data_assinatura") or "")
+        # Extrai ano da data ou do número (ex: 00065/2025 -> 2025)
+        ano = ""
+        if data_ass and len(data_ass) >= 4:
+            ano = data_ass[:4]
+        else:
+            partes = num_contrato.split("/")
+            if len(partes) > 1 and partes[1].isdigit():
+                ano = partes[1]
+            else:
+                ano = "0"
+        seq         = "1"  # sequencial não presente, usa padrão
+        valor       = _safe_float(r.get("valor_global") or r.get("valor_inicial") or 0)
+        objeto      = _safe_str(r.get("objeto") or "")
         data_pub    = _safe_str(r.get("data_publicacao") or "")
 
-        cnpj_forn   = _safe_str(r.get("cnpj_fornecedor") or r.get("cnpj_contratado") or "")
-        nome_forn   = _safe_str(r.get("nome_fornecedor") or r.get("razao_social_fornecedor") or r.get("nome_razao_social") or "")
-
-        contrato_id = f"{cnpj_org}_{ano}_{seq}_{num_contrato}"
+        # Fornecedor
+        cnpj_forn_raw = _safe_str(
+            r.get("fonecedor_cnpj_cpf_idgener") or
+            r.get("cnpj_fornecedor") or
+            r.get("cnpj_contratado") or
+            ""
+        )
+        # Limpa pontuação, deixa apenas dígitos
+        cnpj_forn = ''.join(filter(str.isdigit, cnpj_forn_raw))
+        nome_forn = _safe_str(
+            r.get("fornecedor_nome") or
+            r.get("nome_fornecedor") or
+            r.get("razao_social_fornecedor") or
+            ""
+        )
+        # Tipo pessoa: a partir de 'fornecedor_tipo' (JURIDICA/FISICA) ou por tamanho do doc
+        tipo_pessoa = "PJ" if len(cnpj_forn) >= 14 else "PF" if len(cnpj_forn) >= 11 else "PE"
+        forn_tipo_raw = _safe_str(r.get("fornecedor_tipo") or "")
+        if forn_tipo_raw.upper().startswith("JUR"):
+            tipo_pessoa = "PJ"
+        elif forn_tipo_raw.upper().startswith("FIS"):
+            tipo_pessoa = "PF"
 
         contratos.append({
-            "contrato_id":    contrato_id,
-            "cnpj_orgao":     cnpj_org,
-            "ano_contrato":   ano,
-            "numero_contrato":num_contrato,
-            "sequencial":     seq,
-            "valor_global":   valor,
-            "objeto":         objeto[:2000],
-            "data_assinatura":data_ass[:19] if data_ass else "",
-            "data_publicacao":data_pub[:19] if data_pub else "",
+            "contrato_id":      contrato_id,
+            "cnpj_orgao":       "",   # não disponível no CSV
+            "ano_contrato":     ano,
+            "numero_contrato":  num_contrato,
+            "sequencial":       seq,
+            "valor_global":     valor,
+            "objeto":           objeto[:2000],
+            "data_assinatura":  data_ass[:19] if data_ass else "",
+            "data_publicacao":  data_pub[:19] if data_pub else "",
             **FONTE,
         })
-
-        nome_org = _safe_str(r.get("nome_ente") or r.get("nome_orgao") or cnpj_org)
-        uf_org   = _safe_str(r.get("uf_ente") or r.get("uf_orgao") or "")
-        if cnpj_org not in seen_org:
-            seen_org.add(cnpj_org)
-            orgaos.append({"cnpj": cnpj_org, "nome": nome_org[:300], "uf": uf_org, **FONTE})
 
         if cnpj_forn:
             if cnpj_forn not in seen_forn:
@@ -277,11 +305,14 @@ def _t_contratos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict],
                 fornecedores.append({
                     "ni_fornecedor": cnpj_forn,
                     "doc_fornecedor": cnpj_forn,
-                    "tipo_pessoa": "PJ",
-                    "nome": nome_forn[:500] if nome_forn else "",
+                    "tipo_pessoa": tipo_pessoa,
+                    "nome": nome_forn[:500],
                     **FONTE,
                 })
-            vinculos.append({"contrato_id": contrato_id, "ni_fornecedor": cnpj_forn})
+            vinculos.append({
+                "contrato_id": contrato_id,
+                "ni_fornecedor": cnpj_forn,
+            })
 
     return contratos, fornecedores, orgaos, vinculos
 
@@ -289,44 +320,42 @@ def _t_contratos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict],
 def _t_empenhos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Parse do CSV comprasnet-contratos-anual-empenhos.
+    Colunas esperadas (exemplo):
+      id, numero_empenho, data_emissao, cpf_cnpj_credor, credor,
+      valor_empenhado, contrato_id, ...
     """
     empenhos, orgaos, vinculos = [], [], []
-    seen_org = set()
+    # Orgaos não são criados a partir de empenhos pois lack CNPJ
 
     for r in chunk:
-        cnpj = _safe_str(r.get("cnpj_ente") or r.get("cnpj_orgao") or r.get("cnpj") or "")
-        if not cnpj:
+        # ID único do empenho: campo 'id'
+        empenho_id = _safe_str(r.get("id") or r.get("empenho_id") or "")
+        if not empenho_id:
             continue
 
-        ano        = _safe_int(r.get("ano_empenho") or r.get("ano") or "")
-        num_emp   = _safe_str(r.get("numero_empenho") or "")
-        valor     = _safe_float(r.get("valor_empenho") or r.get("valor") or 0)
-        num_contrato = _safe_str(r.get("numero_contrato") or "")
-
-        if not num_emp:
-            continue
-
-        empenho_id = f"{cnpj}_{ano}_{num_emp}"
+        # Ano: extrair de data_emissao (YYYY) ou campo 'ano' se existir
+        data_emissao = _safe_str(r.get("data_emissao") or "")
+        ano = data_emissao[:4] if len(data_emissao) >= 4 else _safe_int(r.get("ano") or "")
+        numero_empenho = _safe_str(r.get("numero_empenho") or "")
+        valor = _safe_float(r.get("valor_empenhado") or r.get("valor_empenho") or 0)
+        # Referência ao contrato (pode ser o ID do contrato)
+        num_contrato = _safe_str(r.get("contrato_id") or r.get("numero_contrato") or "")
 
         empenhos.append({
             "empenho_id":      empenho_id,
-            "cnpj_orgao":      cnpj,
+            "cnpj_orgao":      "",   # não disponível
             "ano_empenho":     ano,
-            "numero_empenho":  num_emp,
+            "numero_empenho":  numero_empenho,
             "valor_empenho":   valor,
             "numero_contrato": num_contrato,
             **FONTE,
         })
 
-        if num_contrato and cnpj and ano:
-            contrato_id = f"{cnpj}_{ano}_1_{num_contrato}"
-            vinculos.append({"empenho_id": empenho_id, "contrato_id": contrato_id})
-
-        if cnpj not in seen_org:
-            seen_org.add(cnpj)
-            nome_org = _safe_str(r.get("nome_ente") or r.get("nome_orgao") or cnpj)
-            uf_org   = _safe_str(r.get("uf_ente") or r.get("uf_orgao") or "")
-            orgaos.append({"cnpj": cnpj, "nome": nome_org[:300], "uf": uf_org, **FONTE})
+        if num_contrato:
+            vinculos.append({
+                "empenho_id": empenho_id,
+                "contrato_id": num_contrato,
+            })
 
     return empenhos, orgaos, vinculos
 
