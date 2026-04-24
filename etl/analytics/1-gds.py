@@ -16,7 +16,8 @@ Algoritmos executados (em ordem):
 Labels projetados:
   Empresa, Pessoa, Partner, Municipio, Estado, Parlamentar,
   Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao,
-  ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao
+  ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao,
+  GrupoContratacao
 
 Propriedades gravadas nos nós:
   gds_comunidade   (Louvain)
@@ -71,29 +72,44 @@ CALL gds.graph.project(
     'UnidadeGestora',
     'Partido',
     'Contrato',
-    'Licitacao'
+    'Licitacao',
+    'ItemResultado',
+    'Fornecedor',
+    'ContratoComprasNet',
+    'Empenho',
+    'Orgao',
+    'GrupoContratacao'
   ],
   {
-    SOCIO_DE:          { orientation: 'NATURAL'    },
-    LOCALIZADA_EM:     { orientation: 'NATURAL'    },
-    POSSUI_SANCAO:     { orientation: 'NATURAL'    },
-    AUTORA_DE:         { orientation: 'NATURAL'    },
-    DESTINADA_A:       { orientation: 'NATURAL'    },
-    BENEFICIOU:        { orientation: 'NATURAL'    },
-    DOOU_PARA:         { orientation: 'NATURAL'    },
-    EH_SERVIDOR:       { orientation: 'NATURAL'    },
-    LOTADO_EM:         { orientation: 'NATURAL'    },
-    CANDIDATO_EM:      { orientation: 'NATURAL'    },
+    SOCIO_DE:           { orientation: 'NATURAL'    },
+    LOCALIZADA_EM:      { orientation: 'NATURAL'    },
+    POSSUI_SANCAO:      { orientation: 'NATURAL'    },
+    AUTORA_DE:          { orientation: 'NATURAL'    },
+    DESTINADA_A:        { orientation: 'NATURAL'    },
+    BENEFICIOU:         { orientation: 'NATURAL'    },
+    DOOU_PARA:          { orientation: 'NATURAL'    },
+    EH_SERVIDOR:        { orientation: 'NATURAL'    },
+    LOTADO_EM:          { orientation: 'NATURAL'    },
+    CANDIDATO_EM:       { orientation: 'NATURAL'    },
     POSSUI_DIVIDA:      { orientation: 'NATURAL'    },
     RECEBEU_EMPRESTIMO: { orientation: 'NATURAL'    },
-    GASTOU:            { orientation: 'NATURAL'    },
-    FORNECEU:          { orientation: 'NATURAL'    },
-    DECLAROU_BEM:     { orientation: 'NATURAL'    },
-    MESMO_QUE:         { orientation: 'UNDIRECTED' },
-    PUBLICOU_LICITACAO:{ orientation: 'NATURAL'    },
-    FIRMOU_CONTRATO:   { orientation: 'NATURAL'    },
-    CONTRATOU:         { orientation: 'NATURAL'    },
-    VINCULADO_A:        { orientation: 'NATURAL'    }
+    GASTOU:             { orientation: 'NATURAL'    },
+    FORNECEU:           { orientation: 'NATURAL'    },
+    DECLAROU_BEM:       { orientation: 'NATURAL'    },
+    MESMO_QUE:          { orientation: 'UNDIRECTED' },
+    PUBLICOU_LICITACAO: { orientation: 'NATURAL'    },
+    FIRMOU_CONTRATO:    { orientation: 'NATURAL'    },
+    CONTRATOU:          { orientation: 'NATURAL'    },
+    VINCULADO_A:        { orientation: 'NATURAL'    },
+    DISPUTOU:           { orientation: 'NATURAL'    },
+    DISPUTA_ITEM:       { orientation: 'NATURAL'    },
+    PERTENCE_A:         { orientation: 'NATURAL'    },
+    PAGO_POR:           { orientation: 'NATURAL'    },
+    CELEBRADO_COM:      { orientation: 'NATURAL'    },
+    REALIZA_ITEM:       { orientation: 'NATURAL'    },
+    CELEBRA:            { orientation: 'NATURAL'    },
+    REFERE_SE:          { orientation: 'NATURAL'    },
+    LOCALIZADO_EM:      { orientation: 'NATURAL'    }
   }
 )
 YIELD graphName, nodeCount, relationshipCount
