@@ -92,7 +92,7 @@ def _safe_int(v) -> str:
 
 # ── iter_csv ───────────────────────────────────────────────────────────────────
 
-def iter_csv(path: Path, chunk_size: int = CHUNK_SIZE, encoding: str = "utf-8-sig", delimiter: str = ";"):
+def iter_csv(path: Path, chunk_size: int = CHUNK_SIZE, encoding: str = "utf-8-sig", delimiter: str = "auto"):
     """
     Lê CSV em chunks sem carregar tudo em memória.
     Auto-detecta delimitador se delimiter='auto'.
@@ -105,11 +105,20 @@ def iter_csv(path: Path, chunk_size: int = CHUNK_SIZE, encoding: str = "utf-8-si
         if delimiter == "auto":
             sample = f.read(4096)
             f.seek(0)
-            delimiter = ";" if sample.count(";") > sample.count(",") else ","
+            comma_count = sample.count(",")
+            semicolon_count = sample.count(";")
+            delimiter = ";" if semicolon_count > comma_count else ","
+            log.debug(f"  Delimitador detectado para {path.name}: '{delimiter}' (,={comma_count} ;={semicolon_count})")
         reader = csv.DictReader(f, delimiter=delimiter)
         chunk: list[dict] = []
         for row in reader:
-            row = {k: (v or "").strip() for k, v in row.items() if k is not None}
+            # Normaliza chaves: strip, lower, remove BOM se presente
+            # Normaliza valores: strip
+            row = {
+                k.strip().lower().replace('\ufeff', ''): (v or "").strip()
+                for k, v in row.items()
+                if k is not None
+            }
             chunk.append(row)
             if len(chunk) >= chunk_size:
                 yield chunk
