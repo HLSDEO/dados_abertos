@@ -34,6 +34,7 @@ docker compose run --rm etl
 #### Flags disponíveis
 ```bash
 docker compose run --rm etl download cnpj --chunk 100000 --workers 4
+docker compose run --rm etl download cnpj --limite 10000 # limita o numero de linhas carregadas
 docker compose run --rm etl download tse --eleicao 2024 --eleicao 2022
 docker compose run --rm etl pipeline cnpj --history   # todos os snapshots
 docker compose run --rm etl run cnpj --full           # download + pipeline + analytics

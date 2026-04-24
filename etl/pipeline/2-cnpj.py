@@ -414,61 +414,113 @@ def _run_batches(session, query: str, rows: list[dict], extra_params: dict = Non
                     raise
 _LOG_EVERY = 500_000   # loga progresso a cada N linhas
 # ── Carga de cada tipo (roda em thread própria) ───────────────────────────────
-def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
+def _load_empresas(driver, csv_dir: Path, tables: dict, snapshot: str, limite: int | None = None, stats: dict = None) -> int:
     path = csv_dir / "empresas.csv"
     total = 0
+    if stats is None:
+        stats = {'total': 0}
     with driver.session() as session:
         for chunk in _iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [empresas] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             prep = _t_empresas(chunk, tables)
             _run_batches(session, Q_EMPRESA, prep)
             total += len(prep)
+            stats['total'] += len(prep)
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [empresas] {total:,} linhas inseridas...")
     log.info(f"    [empresas] ✓ {total:,}")
-def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str) -> None:
+    return total
+def _load_estabelecimentos(driver, csv_dir: Path, tables: dict, snapshot: str, limite: int | None = None, stats: dict = None) -> int:
     path = csv_dir / "estabelecimentos.csv"
     est_total = 0
+    if stats is None:
+        stats = {'total': 0}
     fonte_params = {"fonte_nome": FONTE["fonte_nome"]}
     with driver.session() as session:
         for chunk in _iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [estabelecimentos] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             updates, _ = _t_estabelecimentos(chunk, tables)
-            # query unificada: SET empresa + MERGE municipio + MERGE rel em 1 round-trip
-            _run_batches(session, Q_ESTABELECIMENTO_UPDATE, updates,
-                         extra_params=fonte_params)
+            _run_batches(session, Q_ESTABELECIMENTO_UPDATE, updates, extra_params=fonte_params)
             est_total += len(updates)
+            stats['total'] += len(updates)
             if est_total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [estabelecimentos] {est_total:,} linhas...")
     log.info(f"    [estabelecimentos] ✓ {est_total:,}")
-def _load_simples(driver, csv_dir: Path, snapshot: str) -> None:
+    return est_total
+def _load_simples(driver, csv_dir: Path, snapshot: str, limite: int | None = None, stats: dict = None) -> int:
     path = csv_dir / "simples.csv"
     total = 0
+    if stats is None:
+        stats = {'total': 0}
     with driver.session() as session:
         for chunk in _iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [simples] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             prep = _t_simples(chunk)
             _run_batches(session, Q_SIMPLES, prep)
             total += len(prep)
+            stats['total'] += len(prep)
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(f"    [simples] {total:,} linhas inseridas...")
     log.info(f"    [simples] ✓ {total:,}")
-def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str) -> int:
+    return total
+def _load_socios(driver, csv_dir: Path, tables: dict, snapshot: str, limite: int | None = None, stats: dict = None) -> int:
     path = csv_dir / "socios.csv"
     pf_t = pj_t = ext_t = part_t = 0
+    if stats is None:
+        stats = {'total': 0}
     with driver.session() as session:
         for chunk in _iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [socios] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             pf, pj, ext, part_nodes, part_rels = _t_socios(chunk, tables)
             if pf:
                 _run_batches(session, Q_SOCIO_PF, pf)
                 pf_t += len(pf)
+                stats['total'] += len(pf)
             if pj:
                 _run_batches(session, Q_SOCIO_PJ, pj)
                 pj_t += len(pj)
+                stats['total'] += len(pj)
             if ext:
                 _run_batches(session, Q_SOCIO_EXT, ext)
                 ext_t += len(ext)
+                stats['total'] += len(ext)
             if part_nodes:
                 _run_batches(session, Q_PARTNER, part_nodes)
                 _run_batches(session, Q_PARTNER_SOCIO_DE, part_rels)
                 part_t += len(part_nodes)
+                stats['total'] += len(part_nodes)
             total = pf_t + pj_t + ext_t + part_t
             if total % _LOG_EVERY < CHUNK_SIZE:
                 log.info(
@@ -498,7 +550,7 @@ def _wait_for_neo4j(uri: str, user: str, password: str,
             time.sleep(delay)
     raise RuntimeError(f"Neo4j não ficou disponível após {retries} tentativas")
 # ── Entry-point ───────────────────────────────────────────────────────────────
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = False):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = False, limite: int | None = None):
     log.info(
         f"[cnpj] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}  workers={WORKERS}"
     )
@@ -524,21 +576,32 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
             log.info(f"  === Snapshot {snapshot} ===")
             tables = _load_domain_tables(csv_dir)
             log.info("  [1/4] Empresas (sequencial — cria nós base)...")
-            _load_empresas(driver, csv_dir, tables, snapshot)
+            stats = {'total': 0}
+            total_empresas = _load_empresas(driver, csv_dir, tables, snapshot, limite, stats)
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"  Limite de {limite:,} linhas atingido após empresas. Parando.")
+                break
             log.info(f"  [2-4] Simples + Estabelecimentos + Sócios (paralelo, workers={WORKERS})...")
             total_socios = 0
             with ThreadPoolExecutor(max_workers=WORKERS) as pool:
                 futures = {
-                    pool.submit(_load_simples,          driver, csv_dir,        snapshot): "simples",
-                    pool.submit(_load_estabelecimentos, driver, csv_dir, tables, snapshot): "estabelecimentos",
-                    pool.submit(_load_socios,           driver, csv_dir, tables, snapshot): "socios",
+                    pool.submit(_load_simples,          driver, csv_dir,        snapshot, limite, stats): "simples",
+                    pool.submit(_load_estabelecimentos, driver, csv_dir, tables, snapshot, limite, stats): "estabelecimentos",
+                    pool.submit(_load_socios,           driver, csv_dir, tables, snapshot, limite, stats): "socios",
                 }
                 for future in as_completed(futures):
                     name = futures[future]
                     result = future.result()   # propaga exceção imediatamente
                     if name == "socios":
                         total_socios = result
+                    if limite is not None and stats['total'] >= limite:
+                        log.info(f"  Limite de {limite:,} atingido durante {name}. Cancelando tarefas restantes...")
+                        # Não cancela futuras, mas o próximo ciclo vai parar
+                        break
             run_ctx.add(rows_out=total_socios)
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"  Limite de {limite:,} linhas atingido após snapshot {snapshot}. Parando.")
+                break
             # ── liga municípios RF → nós canônicos IBGE via MESMO_QUE ─────
             log.info("  Linkando municípios RF → IBGE via MESMO_QUE...")
             with driver.session() as session:
@@ -548,3 +611,25 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
             log.info("  ✓ municípios linkados")
     driver.close()
     log.info("[cnpj] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline CNPJ — carrega dados da Receita Federal no Neo4j")
+    parser.add_argument("--history", action="store_true", help="Carrega histórico completo (padrão: apenas último snapshot)")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        history=args.history,
+        limite=args.limite,
+    )
