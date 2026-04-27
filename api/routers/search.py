@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Query
+from cache import cache_get_json, cache_set_json, make_cache_key
 from deps import get_driver, run_query
 
 router = APIRouter(prefix="/search", tags=["search"])
+_SEARCH_CACHE_TTL = 30
 
 _LABEL_ID = {
     "Pessoa":      "cpf",
@@ -36,6 +38,11 @@ def search(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0, le=100000),
 ):
+    cache_key = make_cache_key("search", q=q, limit=limit, offset=offset)
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+
     driver = get_driver()
     with driver.session() as s:
         result = run_query(
@@ -54,10 +61,12 @@ def search(
             {"score": round(r["score"], 4), **_node_to_dict(r["node"])}
             for r in result
         ]
-    return {
+    payload = {
         "q": q,
         "offset": offset,
         "limit": limit,
         "returned": len(items),
         "items": items,
     }
+    cache_set_json(cache_key, payload, ttl_seconds=_SEARCH_CACHE_TTL)
+    return payload

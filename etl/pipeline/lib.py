@@ -118,6 +118,24 @@ _SCHEMA_QUERIES = [
     "CREATE INDEX partner_name           IF NOT EXISTS FOR (p:Partner) ON (p.nome)",
     "CREATE INDEX partner_doc_partial    IF NOT EXISTS FOR (p:Partner) ON (p.doc_partial)",
     "CREATE INDEX partner_nome_doc       IF NOT EXISTS FOR (p:Partner) ON (p.nome, p.doc_partial)",
+    # Índices base para endpoints da API (lookup + filtros frequentes)
+    "CREATE INDEX api_pessoa_cpf         IF NOT EXISTS FOR (p:Pessoa) ON (p.cpf)",
+    "CREATE INDEX api_pessoa_nome        IF NOT EXISTS FOR (p:Pessoa) ON (p.nome)",
+    "CREATE INDEX api_empresa_cnpj_basico IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj_basico)",
+    "CREATE INDEX api_empresa_cnpj       IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
+    "CREATE INDEX api_empresa_uf         IF NOT EXISTS FOR (e:Empresa) ON (e.uf)",
+    "CREATE INDEX api_parlamentar_id     IF NOT EXISTS FOR (p:Parlamentar) ON (p.id)",
+    "CREATE INDEX api_parlamentar_id_camara IF NOT EXISTS FOR (p:Parlamentar) ON (p.id_camara)",
+    "CREATE INDEX api_parlamentar_cpf    IF NOT EXISTS FOR (p:Parlamentar) ON (p.cpf)",
+    "CREATE INDEX api_parlamentar_codigo_autor IF NOT EXISTS FOR (p:Parlamentar) ON (p.codigo_autor)",
+    "CREATE INDEX api_parlamentar_nome_autor IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
+    "CREATE INDEX api_municipio_uf       IF NOT EXISTS FOR (m:Municipio) ON (m.uf)",
+    "CREATE INDEX api_municipio_sigla_uf IF NOT EXISTS FOR (m:Municipio) ON (m.sigla_uf)",
+    "CREATE INDEX api_municipio_codigo_ibge IF NOT EXISTS FOR (m:Municipio) ON (m.codigo_ibge)",
+    "CREATE INDEX api_emenda_ano         IF NOT EXISTS FOR (e:Emenda) ON (e.ano)",
+    "CREATE INDEX api_emenda_ano_emenda  IF NOT EXISTS FOR (e:Emenda) ON (e.ano_emenda)",
+    "CREATE INDEX api_sancao_data_inicio IF NOT EXISTS FOR (s:Sancao) ON (s.data_inicio)",
+    "CREATE INDEX api_sancao_data_inicio_sancao IF NOT EXISTS FOR (s:Sancao) ON (s.data_inicio_sancao)",
 ]
 
 # Fulltext criado separado — sintaxe diferente das demais DDLs

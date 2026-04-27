@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query
+from cache import cache_get_json, cache_set_json, make_cache_key
 from deps import get_driver, run_query
 
 router = APIRouter(prefix="/empresa", tags=["empresa"])
+_EMPRESA_CACHE_TTL = 120
 
 
 @router.get("/{cnpj_basico}")
@@ -10,6 +12,11 @@ def get_empresa(
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0, le=100000),
 ):
+    cache_key = make_cache_key("empresa", cnpj_basico=cnpj_basico, limit=limit, offset=offset)
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return cached
+
     driver = get_driver()
     with driver.session() as s:
 
@@ -103,7 +110,7 @@ def get_empresa(
             cnpj=cnpj_basico, offset=offset, limit=limit,
         ).data()
 
-    return {
+    payload = {
         "pagination": {"limit": limit, "offset": offset},
         "empresa":   empresa,
         "socios_pf": socios_pf,
@@ -113,3 +120,5 @@ def get_empresa(
         "emendas":   emendas,
         "similares": similares,
     }
+    cache_set_json(cache_key, payload, ttl_seconds=_EMPRESA_CACHE_TTL)
+    return payload
