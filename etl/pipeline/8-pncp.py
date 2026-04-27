@@ -484,16 +484,28 @@ MERGE (o)-[:REALIZA_ITEM]->(ir)
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
-def _load_itens(driver, csv_path: Path) -> None:
+def _load_itens(driver, csv_path: Path, limite: int | None = None, stats: dict | None = None) -> None:
     log.info("  Lendo itens PNCP...")
     total_items = total_forn = total_org = total_mun = 0
+    if stats is None:
+        stats = {'total': 0}
 
     with driver.session() as session:
         for chunk in iter_csv(csv_path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [itens] Limite de {limite:,} atingido. Parando.")
+                break
             itens, forn, org, mun = _t_itens(chunk)
+            if limite is not None and itens:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if restante < len(itens):
+                    itens = itens[:restante]
             if itens:
                 run_batches(session, Q_ITEM_UPSERT, itens)
                 total_items += len(itens)
+                stats['total'] += len(itens)
             if forn:
                 run_batches(session, Q_FORNECEDOR_UPSERT, forn)
                 total_forn += len(forn)
@@ -507,16 +519,28 @@ def _load_itens(driver, csv_path: Path) -> None:
     log.info(f"    [OK] itens={total_items:,}  fornecedores={total_forn:,}  orgaos={total_org:,}  municipios={total_mun:,}")
 
 
-def _load_contratos(driver, csv_path: Path) -> None:
+def _load_contratos(driver, csv_path: Path, limite: int | None = None, stats: dict | None = None) -> None:
     log.info("  Lendo contratos ComprasNet...")
     total_cont = total_forn = total_org = 0
+    if stats is None:
+        stats = {'total': 0}
 
     with driver.session() as session:
         for chunk in iter_csv(csv_path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [contratos] Limite de {limite:,} atingido. Parando.")
+                break
             cont, forn, org, vincs = _t_contratos(chunk)
+            if limite is not None and cont:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if restante < len(cont):
+                    cont = cont[:restante]
             if cont:
                 run_batches(session, Q_CONTRATO_UPSERT, cont)
                 total_cont += len(cont)
+                stats['total'] += len(cont)
             if forn:
                 run_batches(session, Q_FORNECEDOR_UPSERT, forn)
                 total_forn += len(forn)
@@ -529,16 +553,28 @@ def _load_contratos(driver, csv_path: Path) -> None:
     log.info(f"    [OK] contratos={total_cont:,}  fornecedores={total_forn:,}  orgaos={total_org:,}")
 
 
-def _load_empenhos(driver, csv_path: Path) -> None:
+def _load_empenhos(driver, csv_path: Path, limite: int | None = None, stats: dict | None = None) -> None:
     log.info("  Lendo empenhos ComprasNet...")
     total_emp = total_org = 0
+    if stats is None:
+        stats = {'total': 0}
 
     with driver.session() as session:
         for chunk in iter_csv(csv_path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [empenhos] Limite de {limite:,} atingido. Parando.")
+                break
             emp, org, vincs = _t_empenhos(chunk)
+            if limite is not None and emp:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if restante < len(emp):
+                    emp = emp[:restante]
             if emp:
                 run_batches(session, Q_EMPENHO_UPSERT, emp)
                 total_emp += len(emp)
+                stats['total'] += len(emp)
             if org:
                 run_batches(session, Q_ORGAO_UPSERT, org)
                 total_org += len(org)
@@ -555,6 +591,7 @@ def run(
     neo4j_user: str,
     neo4j_password: str,
     csv_dir: Path | None = None,
+    limite: int | None = None,
 ) -> None:
     """
     Executa pipeline de carga no Neo4j.
@@ -564,6 +601,7 @@ def run(
         neo4j_user: usuário
         neo4j_password: senha
         csv_dir: diretório com CSVs (padrão: DATA_DIR/pncp_csv)
+        limite: número máximo de linhas a inserir no total (carga parcial)
     """
     log.info("[PNCP-CSV] Pipeline iniciado")
 
@@ -593,9 +631,20 @@ def run(
                         pass  # constraint já existe
 
             log.info("  Carregando dados...")
-            _load_itens(driver, files["itens"])
-            _load_contratos(driver, files["contratos"])
-            _load_empenhos(driver, files["empenhos"])
+            stats = {'total': 0}
+            for etapa, path in files.items():
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"  Limite de {limite:,} linhas atingido antes de {etapa}. Parando.")
+                    break
+                if etapa == "itens":
+                    _load_itens(driver, path, limite=limite, stats=stats)
+                elif etapa == "contratos":
+                    _load_contratos(driver, path, limite=limite, stats=stats)
+                elif etapa == "empenhos":
+                    _load_empenhos(driver, path, limite=limite, stats=stats)
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"  Limite de {limite:,} linhas atingido após {etapa}. Parando.")
+                    break
 
         log.info("[PNCP-CSV] Pipeline concluído com sucesso")
 
