@@ -17,6 +17,15 @@ docker compose up -d
 ```
 - Neo4j Browser: http://localhost:7474 (usuário: `neo4j` / senha: `changeme`)
 - API: http://localhost:8000/docs
+- Métricas: http://localhost:8000/metrics
+
+### 1.1 Perfis de ambiente (dev/prod)
+```bash
+copy .env.dev .env
+copy .env.prod .env
+```
+- `dev`: 8 cores / 24 GB RAM
+- `prod`: 24 cores / 120 GB RAM
 
 ### 2. ETL
 
@@ -37,6 +46,7 @@ docker compose run --rm etl download cnpj --chunk 100000 --workers 4
 docker compose run --rm etl download cnpj --limite 10000 # limita o numero de linhas carregadas
 docker compose run --rm etl download tse --eleicao 2024 --eleicao 2022
 docker compose run --rm etl pipeline cnpj --history   # todos os snapshots
+docker compose run --rm etl pipeline camara --ano 2024 --ano 2025
 docker compose run --rm etl run cnpj --full           # download + pipeline + analytics
 ```
 
@@ -88,7 +98,20 @@ Documentação interativa: http://localhost:8000/docs
 | `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges). Retorna `nome` e `razao_social` proeminentes |
 | `GET /patterns/empresa/{cnpj_basico}` | Padrões de corrupção/irregularidade de uma empresa. 
 | `GET /patterns/estado/{uf}` | Padrões de corrupção/irregularidade de empresas de um estado. 
+| `GET /metrics` | Métricas Prometheus (latência HTTP, erros, tempo de query Neo4j, queries lentas) |
 | `GET /docs` | Swagger UI |
+
+### Paginação
+- Endpoints de leitura aceitam `limit` e `offset` para reduzir carga e controlar payload.
+- Implementado em `search`, `pessoa`, `empresa`, `parlamentar` e `graph/expand`.
+
+### Cache Redis (endpoints quentes)
+- Cache com fallback seguro (se Redis cair, API continua atendendo sem cache).
+- Endpoints com cache:
+  - `GET /search`
+  - `GET /pessoa/{cpf}`
+  - `GET /empresa/{cnpj_basico}`
+- Serviço `redis` incluído no `docker-compose`.
 
 #### PATTERNS
 
@@ -115,6 +138,9 @@ Os Endpoint's `GET /patterns/` — motor de padrões de corrupção/irregularida
 | :--- | :--- |
 | Banco de Grafo | Neo4j 5 Community + GDS |
 | API | FastAPI (Python 3.12+) |
+| Servidor API | Gunicorn + Uvicorn Worker |
+| Cache | Redis 7 |
+| Observabilidade | Prometheus metrics em `/metrics` |
 | Frontend | — (a implementar) |
 | ETL | Python 3.12 (pandas, splink opcional) |
 | Infra | Docker Compose |
@@ -148,6 +174,11 @@ Todo pipeline registra um nó de auditoria com status (`running` / `loaded` / `q
 
 ### Fulltext Search nativo
 Índice `entidade_busca` cobre 13 labels e 14 propriedades — busca livre sem Elasticsearch.
+
+### Índices e performance de API
+- `setup_schema()` agora aplica índices base para `Pessoa`, `Empresa`, `Parlamentar`, `Municipio`, `Emenda` e `Sancao`.
+- Timeouts de 120s configurados para API e transações Neo4j.
+- Pool de conexões Neo4j e workers/threads da API parametrizados por ambiente.
 
 ### Deduplicação probabilística (Splink)
 Detecta pessoas duplicadas entre fontes usando Jaro-Winkler + exact match em CPF/data de nascimento. Cria `(:Pessoa)-[:MESMO_QUE {score, confianca}]->(:Pessoa)` para pares acima de 0.8 de probabilidade.
