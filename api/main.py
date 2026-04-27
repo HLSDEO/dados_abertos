@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from deps import get_driver, close_driver
 from observability import MetricsMiddleware, metrics_response
-from routers import search, pessoa, empresa, parlamentar, graph, patterns
+from routers import search, pessoa, empresa, parlamentar, graph, patterns, pipelines
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ app.include_router(empresa.router)
 app.include_router(parlamentar.router)
 app.include_router(graph.router)
 app.include_router(patterns.router)
+app.include_router(pipelines.router)
 
 
 @app.get("/health")
