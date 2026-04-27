@@ -657,6 +657,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Pipeline PNCP — carrega CSVs no Neo4j")
     parser.add_argument("--csv-dir", type=Path, default=None, help="Diretório com CSVs (padrão: data/pncp_csv)")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -669,4 +670,5 @@ if __name__ == "__main__":
         neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
         neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
         csv_dir=args.csv_dir,
+        limite=args.limite,
     )
