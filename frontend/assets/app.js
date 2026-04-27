@@ -320,6 +320,10 @@ async function renderGraph(cytoscape, graph, onNodeTap) {
 }
 
 function mountGraphPage(cytoscape) {
+  const params = new URLSearchParams(window.location.search);
+  const initialLabel = params.get("label");
+  const initialId = params.get("id");
+  const initialHops = params.get("hops") || "1";
   const root = $("#page-content");
   root.innerHTML = `
     ${renderHeader({
@@ -374,11 +378,54 @@ function mountGraphPage(cytoscape) {
   let currentGraph = null;
   let currentCy = null;
 
+  async function resolveGraphTarget(label, rawValue) {
+    const term = rawValue.trim();
+
+    try {
+      await apiFetch(`/graph/expand?label=${encodeURIComponent(label)}&id=${encodeURIComponent(term)}&hops=1&max_nodes=1`);
+      return { label, id: term, resolvedBy: "exact" };
+    } catch (error) {
+      if (!String(error.message || "").includes("404")) {
+        throw error;
+      }
+    }
+
+    const search = await apiFetch(`/search?q=${encodeURIComponent(term)}&limit=20`);
+    const exactLabelMatch = (search.items || []).find((item) => item.label === label && item.id);
+    const fallbackMatch = (search.items || []).find((item) => item.id);
+    const chosen = exactLabelMatch || fallbackMatch;
+
+    if (!chosen) {
+      throw new Error(`Nenhum resultado encontrado para "${term}".`);
+    }
+
+    return {
+      label: chosen.label,
+      id: chosen.id,
+      resolvedBy: "search",
+      nome: chosen.nome,
+      requestedLabel: label,
+    };
+  }
+
   async function loadGraph(label, id, hops) {
     $("#graph-meta").textContent = "Carregando conexoes...";
     try {
-      currentGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(label)}&id=${encodeURIComponent(id)}&hops=${hops}&max_nodes=120`);
-      $("#graph-selection").innerHTML = `${labelBadge(label)}<div style="margin-top:10px;" class="mono">${id}</div>`;
+      const resolved = await resolveGraphTarget(label, id);
+      const effectiveLabel = resolved.label;
+      const effectiveId = resolved.id;
+
+      if (resolved.resolvedBy === "search") {
+        $("#graph-label").value = effectiveLabel;
+        $("#graph-id").value = effectiveId;
+        $("#graph-meta").textContent =
+          resolved.requestedLabel === effectiveLabel
+            ? `Termo resolvido por busca: ${resolved.nome || effectiveId}.`
+            : `Termo resolvido por busca: ${resolved.nome || effectiveId} (${effectiveLabel}).`;
+      }
+
+      currentGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(effectiveLabel)}&id=${encodeURIComponent(effectiveId)}&hops=${hops}&max_nodes=120`);
+      $("#graph-selection").innerHTML = `${labelBadge(effectiveLabel)}<div style="margin-top:10px;" class="mono">${effectiveId}</div>`;
       $("#graph-stats").innerHTML = `
         <span class="pill">${currentGraph.nodes.length} nos</span>
         <span class="pill">${currentGraph.edges.length} arestas</span>
@@ -410,6 +457,13 @@ function mountGraphPage(cytoscape) {
   $("#graph-load").addEventListener("click", () => {
     loadGraph($("#graph-label").value, $("#graph-id").value.trim(), $("#graph-hops").value);
   });
+
+  if (initialLabel && initialId) {
+    $("#graph-label").value = initialLabel;
+    $("#graph-id").value = initialId;
+    $("#graph-hops").value = initialHops;
+    loadGraph(initialLabel, initialId, initialHops);
+  }
 }
 
 function normalizeProfileValue(tipo, id, payload) {
@@ -489,7 +543,7 @@ function mountProfilePage(cytoscape) {
             `).join("")}
           </div>
           <div class="link-row" style="margin-top:18px;">
-            <a class="button secondary" href="/grafo.html">Explorador de grafo</a>
+            <a class="button secondary" href="/grafo.html?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1">Explorador de grafo</a>
             ${tipo === "Empresa" ? `<a class="button subtle" href="/corrupcao.html?cnpj=${encodeURIComponent(id)}">Padroes por estado</a>` : ""}
           </div>
         </section>
