@@ -437,6 +437,8 @@ function mountGraphPage(cytoscape) {
 
     currentGraph3D = ForceGraph3D()(container)
       .backgroundColor("#090b0d")
+      .width(container.clientWidth || container.offsetWidth || 800)
+      .height(container.clientHeight || container.offsetHeight || 520)
       .graphData(graphData)
       .nodeColor("color")
       .nodeVal("val")
@@ -445,9 +447,25 @@ function mountGraphPage(cytoscape) {
       .linkWidth(1)
       .nodeLabel((node) => `${node.label}: ${node.name}`)
       .onNodeClick((node) => {
+        const distance = 90;
+        const magnitude = Math.hypot(node.x || 0, node.y || 0, node.z || 0) || 1;
+        const distRatio = 1 + distance / magnitude;
+
+        currentGraph3D.cameraPosition(
+          {
+            x: (node.x || 0) * distRatio,
+            y: (node.y || 0) * distRatio,
+            z: (node.z || 0) * distRatio,
+          },
+          { x: node.x || 0, y: node.y || 0, z: node.z || 0 },
+          900
+        );
+
         const [label, rawId] = String(node.uid).split(":");
         if (label && rawId) {
-          onNodeTap(label, rawId, { nodeLabel: node.label, label: node.name });
+          setTimeout(() => {
+            onNodeTap(label, rawId, { nodeLabel: node.label, label: node.name });
+          }, 220);
         }
       });
 
@@ -455,10 +473,17 @@ function mountGraphPage(cytoscape) {
       currentGraph3D.nodeThreeObject((node) => {
         const sprite = new SpriteText(node.name);
         sprite.color = "#dbeafe";
-        sprite.textHeight = 3;
+        sprite.textHeight = 2.2;
         return sprite;
       });
     }
+
+    setTimeout(() => {
+      if (currentGraph3D) {
+        currentGraph3D.zoomToFit(900, 120);
+        currentGraph3D.cameraPosition({ x: 0, y: 0, z: 220 });
+      }
+    }, 700);
   }
 
   function mergeGraphData(baseGraph, incomingGraph) {
@@ -620,6 +645,19 @@ function mountGraphPage(cytoscape) {
         await redrawGraph();
       }
     });
+  });
+
+  window.addEventListener("resize", () => {
+    if (graphMode === "3d" && currentGraph3D) {
+      const container = $("#graph-canvas-3d");
+      currentGraph3D.width(container.clientWidth || container.offsetWidth || 800);
+      currentGraph3D.height(container.clientHeight || container.offsetHeight || 520);
+      setTimeout(() => {
+        if (currentGraph3D) {
+          currentGraph3D.zoomToFit(700, 120);
+        }
+      }, 120);
+    }
   });
 
   syncModeButtons();
