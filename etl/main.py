@@ -271,20 +271,25 @@ def main():
     command = args[0]
     rest    = args[1:]
 
-    targets = [a for a in rest if not a.startswith("--")] or None
-
-    raw_flags = []
+    # Separa targets (nomes posicionais) e flags numa única passagem,
+    # consumindo corretamente os valores das flags que exigem argumento.
+    FLAGS_WITH_VALUE = ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes")
+    targets_list = []
+    raw_flags    = []
     i = 0
     while i < len(rest):
-        if rest[i].startswith("--"):
-            raw_flags.append(rest[i])
-            if rest[i] in ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes") \
-                    and i + 1 < len(rest) and not rest[i+1].startswith("--"):
+        tok = rest[i]
+        if tok.startswith("--"):
+            raw_flags.append(tok)
+            if tok in FLAGS_WITH_VALUE and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
+        else:
+            targets_list.append(tok)
         i += 1
 
-    opts = _parse_flags(raw_flags)
+    targets = targets_list or None
+    opts    = _parse_flags(raw_flags)
 
     if command == "download":
         names = targets or list(DOWNLOADS)
