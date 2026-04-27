@@ -371,7 +371,7 @@ function mountGraphPage(cytoscape) {
         </div>
       </div>
     </section>
-    <section class="split">
+    <section id="graph-layout" class="split graph-layout">
       <div class="card">${makeGraphShell()}</div>
       <div class="stack">
         <section class="card">
@@ -399,6 +399,7 @@ function mountGraphPage(cytoscape) {
     document.querySelectorAll(".mode-option").forEach((button) => {
       button.classList.toggle("active", button.dataset.mode === graphMode);
     });
+    $("#graph-layout")?.classList.toggle("mode-3d", graphMode === "3d");
   }
 
   function destroy3D() {
@@ -472,7 +473,7 @@ function mountGraphPage(cytoscape) {
     if (window.SpriteText) {
       currentGraph3D.nodeThreeObject((node) => {
         const sprite = new SpriteText(node.name);
-        sprite.color = "#dbeafe";
+        sprite.color = node.color || "#dbeafe";
         sprite.textHeight = 2.2;
         return sprite;
       });

@@ -443,13 +443,20 @@ tr:last-child td {
   background: #090b0d;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  min-height: 520px;
+  height: min(70vh, 720px);
+  max-width: 1000px;
+  min-height: 360px;
   overflow: hidden;
   position: relative;
+  width: 100%;
+}
+
+.split.graph-layout .graph-shell {
+  height: min(58vh, 560px);
 }
 
 .graph-canvas {
-  height: 520px;
+  height: 100%;
   width: 100%;
 }
 
@@ -563,11 +570,19 @@ tr:last-child td {
   grid-template-columns: 1.2fr 0.8fr;
 }
 
+.split.graph-layout.mode-3d {
+  grid-template-columns: 1.7fr 0.7fr;
+}
+
 @media (max-width: 1100px) {
   .grid-4,
   .grid-3,
   .grid-2,
   .split {
+    grid-template-columns: 1fr;
+  }
+
+  .split.graph-layout.mode-3d {
     grid-template-columns: 1fr;
   }
 }
