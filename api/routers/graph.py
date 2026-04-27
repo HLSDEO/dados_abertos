@@ -41,13 +41,13 @@ def _serialize_rel(rel, src_uid: str, tgt_uid: str) -> dict:
         "props":  dict(rel),
     }
 
-
+# altered by CÉLIO in 24/04/2026 (Proteção contra Supernós)
 @router.get("/expand")
 def expand(
     label: str = Query(..., description="Label do nó inicial (ex: Pessoa)"),
     id: str    = Query(..., description="Valor da chave única (ex: CPF)"),
     hops: int  = Query(1, ge=1, le=2, description="Profundidade de expansão"),
-    max_nodes: int = Query(80, ge=1, le=300),
+    max_nodes: int = Query(200, ge=1, le=1000), # Limite ajustado para permitir redes maiores
 ):
     key = _LABEL_KEY.get(label)
     if not key:
@@ -55,13 +55,21 @@ def expand(
 
     driver = get_driver()
     with driver.session() as s:
-        # verifica existência
+        # 1. Verifica existência e conta o grau (total de conexões) em uma única query
         start = s.run(
-            f"MATCH (n:{label} {{{key}: $id}}) RETURN n LIMIT 1", id=id
+            f"MATCH (n:{label} {{{key}: $id}}) RETURN n, COUNT {{ (n)--() }} as degree LIMIT 1", id=id
         ).single()
+        
         if not start:
             raise HTTPException(404, f"{label} não encontrado: {id}")
 
+        degree = start["degree"]
+        
+        # 2. Lógica de proteção contra supernós
+        is_supernode = degree > 500
+        applied_limit = 50 if is_supernode else max_nodes
+
+        # 3. Executa a expansão aplicando o limite seguro
         if hops == 1:
             result = s.run(
                 f"""
@@ -70,7 +78,7 @@ def expand(
                 RETURN n, r, m
                 LIMIT $max
                 """,
-                id=id, max=max_nodes,
+                id=id, max=applied_limit,
             )
         else:
             result = s.run(
@@ -82,7 +90,7 @@ def expand(
                 RETURN DISTINCT src AS n, r, tgt AS m
                 LIMIT $max
                 """,
-                id=id, max=max_nodes,
+                id=id, max=applied_limit,
             )
 
         nodes_map: dict[str, dict] = {}
@@ -98,5 +106,12 @@ def expand(
     return {
         "nodes": list(nodes_map.values()),
         "edges": edges,
-        "meta": {"label": label, "id": id, "hops": hops},
+        "meta": {
+            "label": label, 
+            "id": id, 
+            "hops": hops,
+            "degree": degree,
+            "is_supernode": is_supernode,
+            "limit_applied": applied_limit
+        },
     }
