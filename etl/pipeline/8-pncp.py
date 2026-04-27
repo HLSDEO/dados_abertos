@@ -624,11 +624,10 @@ def run(
         with IngestionRun(driver, "pncp-csv"):
             with driver.session() as session:
                 log.info("  Aplicando schema (constraints + indices)...")
-                for q in Q_CONSTRAINTS + Q_INDEXES:
-                    try:
-                        session.run(q)
-                    except Exception:
-                        pass  # constraint já existe
+                try:
+                    apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
+                except Exception:
+                    pass  # constraint ja existe
 
             log.info("  Carregando dados...")
             stats = {'total': 0}
@@ -672,3 +671,5 @@ if __name__ == "__main__":
         csv_dir=args.csv_dir,
         limite=args.limite,
     )
+
+
