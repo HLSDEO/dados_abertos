@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from deps import get_driver
+from deps import get_driver, run_query
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -34,21 +34,30 @@ def _node_to_dict(node) -> dict:
 def search(
     q: str = Query(..., min_length=2, description="Texto livre"),
     limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0, le=100000),
 ):
     driver = get_driver()
     with driver.session() as s:
-        result = s.run(
+        result = run_query(
+            s,
             """
             CALL db.index.fulltext.queryNodes('entidade_busca', $q)
             YIELD node, score
             RETURN node, score, labels(node) AS lbls
             ORDER BY score DESC
+            SKIP $offset
             LIMIT $limit
             """,
-            q=q, limit=limit,
+            q=q, offset=offset, limit=limit,
         )
         items = [
             {"score": round(r["score"], 4), **_node_to_dict(r["node"])}
             for r in result
         ]
-    return {"q": q, "total": len(items), "items": items}
+    return {
+        "q": q,
+        "offset": offset,
+        "limit": limit,
+        "returned": len(items),
+        "items": items,
+    }

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query, HTTPException
-from deps import get_driver
+from deps import get_driver, run_query
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
@@ -74,6 +74,7 @@ def expand(
     id: str    = Query(..., description="Valor da chave única (ex: CPF)"),
     hops: int  = Query(1, ge=1, le=2, description="Profundidade de expansão"),
     max_nodes: int = Query(200, ge=1, le=1000), # Limite ajustado para permitir redes maiores
+    offset: int = Query(0, ge=0, le=10000),
 ):
     key = _LABEL_KEY.get(label)
     if not key:
@@ -83,7 +84,8 @@ def expand(
 
     with driver.session() as s:
         # 1. Verifica existência e conta o grau (total de conexões) em uma única query
-        start = s.run(
+        start = run_query(
+            s,
             f"MATCH (n:{label} {{{key}: $id}}) RETURN n, COUNT {{ (n)--() }} as degree LIMIT 1", id=id
         ).single()
         
@@ -98,26 +100,30 @@ def expand(
 
         # 3. Executa a expansão aplicando o limite seguro
         if hops == 1:
-            result = s.run(
+            result = run_query(
+                s,
                 f"""
                 MATCH (n:{label} {{{key}: $id}})
                 MATCH (n)-[r]-(m)
                 RETURN n, r, m
+                SKIP $offset
                 LIMIT $max
                 """,
-                id=id, max=applied_limit,
+                id=id, offset=offset, max=applied_limit,
             )
         else:
-            result = s.run(
+            result = run_query(
+                s,
                 f"""
                 MATCH (n:{label} {{{key}: $id}})
                 MATCH path = (n)-[*1..2]-(m)
                 UNWIND relationships(path) AS r
                 WITH startNode(r) AS src, endNode(r) AS tgt, r
                 RETURN DISTINCT src AS n, r, tgt AS m
+                SKIP $offset
                 LIMIT $max
                 """,
-                id=id, max=applied_limit,
+                id=id, offset=offset, max=applied_limit,
             )
 
         nodes_map: dict[str, dict] = {}
@@ -137,6 +143,9 @@ def expand(
             "label": label, 
             "id": id, 
             "hops": hops,
+            "offset": offset,
+            "returned_edges": len(edges),
+            "returned_nodes": len(nodes_map),
             "degree": degree,
             "is_supernode": is_supernode,
             "limit_applied": applied_limit
