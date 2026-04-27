@@ -60,14 +60,16 @@ function onlyDigits(value) {
 }
 
 function maskCPF(value) {
-  const s = onlyDigits(value).padStart(11, "0");
-  if (!s.trim()) return "-";
+  const digits = onlyDigits(value);
+  if (!digits) return "-";
+  const s = digits.padStart(11, "0");
   return `${s.slice(0, 3)}.${s.slice(3, 6)}.${s.slice(6, 9)}-${s.slice(9)}`;
 }
 
 function maskCNPJ(value) {
-  const s = onlyDigits(value).padStart(14, "0");
-  if (!s.trim()) return "-";
+  const digits = onlyDigits(value);
+  if (!digits) return "-";
+  const s = digits.padStart(14, "0");
   return `${s.slice(0, 2)}.${s.slice(2, 5)}.${s.slice(5, 8)}/${s.slice(8, 12)}-${s.slice(12)}`;
 }
 
@@ -387,10 +389,10 @@ function mountGraphPage(cytoscape) {
         $("#graph-selection").innerHTML = `${labelBadge(data.nodeLabel)}<div style="margin-top:10px;" class="result-title">${data.label}</div><div class="muted mono" style="margin-top:6px;">${nextId}</div>`;
         $("#graph-meta").textContent = `Expandindo a partir de ${data.label}...`;
         try {
-          const nextGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(nextLabel)}&id=${encodeURIComponent(nextId)}&hops=1&max_nodes=80`);
-          currentGraph = nextGraph;
-          currentCy.destroy();
-          currentCy = await renderGraph(cytoscape, nextGraph, async () => {});
+          $("#graph-label").value = nextLabel;
+          $("#graph-id").value = nextId;
+          $("#graph-hops").value = "1";
+          await loadGraph(nextLabel, nextId, 1);
           $("#graph-meta").textContent = `Rede atualizada para ${data.label}.`;
         } catch (error) {
           $("#graph-meta").textContent = `Falha ao expandir ${data.label}.`;
@@ -659,6 +661,8 @@ function renderParlamentarSections(payload) {
 }
 
 function mountCorruptionPage() {
+  const params = new URLSearchParams(window.location.search);
+  const cnpjFromQuery = params.get("cnpj");
   const root = $("#page-content");
   root.innerHTML = `
     ${renderHeader({
@@ -729,6 +733,10 @@ function mountCorruptionPage() {
       document.querySelectorAll(".company-patterns").forEach((button) => {
         button.addEventListener("click", () => loadCompanyPatterns(button.dataset.cnpj));
       });
+
+      if (cnpjFromQuery) {
+        loadCompanyPatterns(cnpjFromQuery);
+      }
     } catch (error) {
       $("#state-results").innerHTML = `<div class="error-state">${error.message}</div>`;
     }
