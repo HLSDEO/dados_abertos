@@ -574,66 +574,71 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
+    def _atingiu(stats_local):
+        return limite is not None and stats_local['total'] >= limite
+
     with IngestionRun(driver, "emendas_cgu"):
         stats = {'total': 0}
+        atingiu_limite = False
+
         log.info("  [1/5] Emendas, parlamentares, funções...")
         _load_emendas(driver, limite, stats)
-        if limite is not None and stats['total'] >= limite:
+        if _atingiu(stats):
             log.info(f"  Limite de {limite:,} linhas atingido após emendas. Parando.")
-            driver.close()
-            return
+            atingiu_limite = True
 
-        log.info("  [2/5] Convênios...")
-        _load_convenios(driver, limite, stats)
-        if limite is not None and stats['total'] >= limite:
-            log.info(f"  Limite de {limite:,} linhas atingido após convênios. Parando.")
-            driver.close()
-            return
+        if not atingiu_limite:
+            log.info("  [2/5] Convênios...")
+            _load_convenios(driver, limite, stats)
+            if _atingiu(stats):
+                log.info(f"  Limite de {limite:,} linhas atingido após convênios. Parando.")
+                atingiu_limite = True
 
-        log.info("  [3/5] Por favorecido...")
-        _load_por_favorecido(driver, limite, stats)
-        if limite is not None and stats['total'] >= limite:
-            log.info(f"  Limite de {limite:,} linhas atingido após por_favorecido. Parando.")
-            driver.close()
-            return
+        if not atingiu_limite:
+            log.info("  [3/5] Por favorecido...")
+            _load_por_favorecido(driver, limite, stats)
+            if _atingiu(stats):
+                log.info(f"  Limite de {limite:,} linhas atingido após por_favorecido. Parando.")
+                atingiu_limite = True
 
-        log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")
-        with driver.session() as session:
-            result = session.run(Q_EMENDA_BENEFICIOU)
-            summary = result.consume()
-            log.info(f"    ✓ {summary.counters.relationships_created:,} rels BENEFICIOU criadas  "
-                     f"({summary.counters.properties_set:,} props)")
-
-        log.info("  [5/5] Linkando Parlamentar → Pessoa (TSE)...")
-        exact_map, cand_tokens = _build_nome_cpf_map(driver)
-        if exact_map or cand_tokens:
-            link_rows = []
-            ambiguous = missed = 0
+        if not atingiu_limite:
+            log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")
             with driver.session() as session:
-                result = session.run(
-                    "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
-                )
-                for rec in result:
-                    cpf = _resolve_cpf(rec["nome"] or "", exact_map, cand_tokens)
-                    if cpf:
-                        link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
-                    else:
-                        tokens = _norm_tokens(rec["nome"] or "")
-                        if any(tokens & toks for toks, _ in cand_tokens):
-                            ambiguous += 1
-                        else:
-                            missed += 1
-            if link_rows:
+                result = session.run(Q_EMENDA_BENEFICIOU)
+                summary = result.consume()
+                log.info(f"    ✓ {summary.counters.relationships_created:,} rels BENEFICIOU criadas  "
+                         f"({summary.counters.properties_set:,} props)")
+
+            log.info("  [5/5] Linkando Parlamentar → Pessoa (TSE)...")
+            exact_map, cand_tokens = _build_nome_cpf_map(driver)
+            if exact_map or cand_tokens:
+                link_rows = []
+                ambiguous = missed = 0
                 with driver.session() as session:
-                    run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
-                log.info(
-                    f"    ✓ {len(link_rows):,} parlamentares linkados  "
-                    f"ambíguos={ambiguous}  sem_match={missed}"
-                )
+                    result = session.run(
+                        "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
+                    )
+                    for rec in result:
+                        cpf = _resolve_cpf(rec["nome"] or "", exact_map, cand_tokens)
+                        if cpf:
+                            link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
+                        else:
+                            tokens = _norm_tokens(rec["nome"] or "")
+                            if any(tokens & toks for toks, _ in cand_tokens):
+                                ambiguous += 1
+                            else:
+                                missed += 1
+                if link_rows:
+                    with driver.session() as session:
+                        run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
+                    log.info(
+                        f"    ✓ {len(link_rows):,} parlamentares linkados  "
+                        f"ambíguos={ambiguous}  sem_match={missed}"
+                    )
+                else:
+                    log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
             else:
-                log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
-        else:
-            log.info("    Pulado — dados TSE não disponíveis")
+                log.info("    Pulado — dados TSE não disponíveis")
 
     driver.close()
     log.info("[emendas_cgu] Pipeline concluído")
