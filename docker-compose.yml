@@ -23,17 +23,16 @@ services:
       - "7687:7687"   # Bolt     → bolt://localhost:7687
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-changeme}"
-      NEO4J_PLUGINS: '["apoc","graph-data-science"]'
+      NEO4J_PLUGINS: '["apoc"]'
       NEO4J_db_transaction_timeout: "${NEO4J_TRANSACTION_TIMEOUT:-120s}"
-      NEO4J_server_memory_heap_initial__size: "4g"
-      NEO4J_server_memory_heap_max__size:     "8g"
-      NEO4J_server_memory_pagecache_size:     "12g"
+      NEO4J_server_memory_heap_initial__size: "${NEO4J_HEAP_INITIAL_SIZE:-1g}"
+      NEO4J_server_memory_heap_max__size:     "${NEO4J_HEAP_MAX_SIZE:-2g}"
+      NEO4J_server_memory_pagecache_size:     "${NEO4J_PAGECACHE_SIZE:-2g}"
       TZ:                America/Sao_Paulo
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
       - ./neo4j/conf:/conf
-      - ./neo4j/plugins:/plugins
       - ./neo4j/import:/var/lib/neo4j/import
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
