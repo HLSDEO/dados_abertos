@@ -251,7 +251,7 @@ def _link_parlamentar_pessoa(driver) -> None:
 
 # ── Entry-point ──────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[senado] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -264,7 +264,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
 
     with IngestionRun(driver, "senado"):
         log.info("  [1/2] Parlamentar + Despesa → GASTOU, FORNECEU...")
-        _load_senado(driver)
+        _load_senado(driver, limite=limite)
 
         log.info("  [2/2] Linkando Parlamentar → Pessoa (Senado)...")
         _link_parlamentar_pessoa(driver)
