@@ -98,7 +98,8 @@ def get_pessoa(
 
         # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
         if not parlamentar:
-            parlamentar = s.run(
+            parlamentar = run_query(
+                s,
                 """
                 MATCH (par:Parlamentar {cpf: $cpf})
                 RETURN par.codigo_autor AS parlamentar_id,
