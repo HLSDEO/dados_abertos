@@ -45,7 +45,6 @@ docker compose run --rm etl run cnpj --full           # download + pipeline + an
 docker compose run --rm etl analytics gds       # Louvain, PageRank, Betweenness, NodeSimilarity
 docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas *
 ```
-> \* Requer `pip install splink duckdb` (ou descomente em `etl/requirements.txt` e rebuilde a imagem)
 
 #### Schema e status
 ```bash
