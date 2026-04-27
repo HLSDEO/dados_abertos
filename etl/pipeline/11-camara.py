@@ -134,11 +134,28 @@ def _transform_chunk(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
     return parlamentar_rows, empresa_rows
 
 
-def _load_despesas(driver, limite: int | None = None, stats: dict = None) -> None:
-    """Carrega todos os CSVs de despesas."""
-    todos = sorted(DATA_DIR.glob("despesas_*.csv"))
+def _load_despesas(
+    driver,
+    limite: int | None = None,
+    stats: dict = None,
+    anos: list[int] | None = None,
+) -> None:
+    """Carrega CSVs de despesas (todos ou apenas anos selecionados)."""
+    if anos:
+        todos = [DATA_DIR / f"despesas_{int(ano)}.csv" for ano in sorted(set(anos))]
+    else:
+        todos = sorted(DATA_DIR.glob("despesas_*.csv"))
+
+    todos = [p for p in todos if p.exists()]
     if not todos:
-        log.warning("  Nenhum arquivo despesas_*.csv encontrado — execute download camara primeiro")
+        if anos:
+            anos_str = ", ".join(str(a) for a in sorted(set(anos)))
+            log.warning(
+                f"  Nenhum arquivo despesas_<ano>.csv encontrado para ano(s): {anos_str} "
+                "— execute download camara primeiro"
+            )
+        else:
+            log.warning("  Nenhum arquivo despesas_*.csv encontrado — execute download camara primeiro")
         return
     if stats is None:
         stats = {'total': 0}
@@ -178,8 +195,16 @@ def _load_despesas(driver, limite: int | None = None, stats: dict = None) -> Non
 
 # ── Entry-point ────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
+def run(
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    limite: int | None = None,
+    anos: list[int] | None = None,
+):
     log.info(f"[camara] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
+    if anos:
+        log.info(f"  Filtrando por ano(s): {sorted(set(anos))}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
     setup_schema(driver)
@@ -192,7 +217,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
     with IngestionRun(driver, "camara"):
         log.info("  [1/1] Parlamentar + Despesa → GASTOU, FORNECEU...")
         stats = {'total': 0}
-        _load_despesas(driver, limite, stats)
+        _load_despesas(driver, limite, stats, anos)
 
     driver.close()
     log.info("[camara] Pipeline concluído")
@@ -203,6 +228,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Pipeline Câmara — carrega despesas CEAP no Neo4j")
     parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    parser.add_argument("--ano", type=int, action="append", default=None, help="Ano(s) dos CSVs a carregar (repetível)")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -215,4 +241,5 @@ if __name__ == "__main__":
         neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
         neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
         limite=args.limite,
+        anos=args.ano,
     )
