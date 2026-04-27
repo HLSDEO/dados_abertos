@@ -249,6 +249,7 @@ function makeGraphShell() {
   return `
     <div class="graph-shell">
       <div id="graph-canvas" class="graph-canvas"></div>
+      <div id="graph-canvas-3d" class="graph-canvas hidden"></div>
       <div class="graph-meta">
         <div class="muted" id="graph-meta">Clique em um no para expandir mais conexoes.</div>
       </div>
@@ -256,7 +257,7 @@ function makeGraphShell() {
   `;
 }
 
-async function renderGraph(cytoscape, graph, onNodeTap) {
+async function renderGraph2D(cytoscape, graph, onNodeTap) {
   const elements = [
     ...graph.nodes.map((node) => ({
       data: {
@@ -333,12 +334,12 @@ function mountGraphPage(cytoscape) {
   const params = new URLSearchParams(window.location.search);
   const initialLabel = params.get("label");
   const initialId = params.get("id");
-  const initialHops = params.get("hops") || "1";
+  const initialMode = params.get("mode") || "2d";
   const root = $("#page-content");
   root.innerHTML = `
     ${renderHeader({
       label: "Explorador de grafo",
-      title: "Expansao manual de relacionamentos",
+      title: "Expansão manual de relacionamentos",
       subtitle: "Entre com a entidade raiz e navegue pelo grafo sem passar por uma landing page. A selecao aqui fica focada em operacao e leitura.",
     })}
     <section class="card">
@@ -358,11 +359,11 @@ function mountGraphPage(cytoscape) {
           <input id="graph-id" placeholder="CPF, CNPJ basico, id parlamentar, UF..." />
         </div>
         <div class="field" style="grid-column: span 2;">
-          <label>Profundidade</label>
-          <select id="graph-hops">
-            <option value="1">1 salto</option>
-            <option value="2">2 saltos</option>
-          </select>
+          <label>Visualizacao</label>
+          <div class="mode-toggle">
+            <button type="button" class="mode-option active" data-mode="2d">2D</button>
+            <button type="button" class="mode-option" data-mode="3d">3D</button>
+          </div>
         </div>
         <div class="field" style="grid-column: span 2;">
           <label>&nbsp;</label>
@@ -391,6 +392,74 @@ function mountGraphPage(cytoscape) {
 
   let currentGraph = null;
   let currentCy = null;
+  let currentGraph3D = null;
+  let graphMode = initialMode === "3d" ? "3d" : "2d";
+
+  function syncModeButtons() {
+    document.querySelectorAll(".mode-option").forEach((button) => {
+      button.classList.toggle("active", button.dataset.mode === graphMode);
+    });
+  }
+
+  function destroy3D() {
+    const container = $("#graph-canvas-3d");
+    if (container) {
+      container.innerHTML = "";
+    }
+    currentGraph3D = null;
+  }
+
+  async function renderGraph3D(graph, onNodeTap) {
+    const container = $("#graph-canvas-3d");
+    if (!window.ForceGraph3D) {
+      container.innerHTML = `<div class="error-state">Modo 3D indisponivel neste navegador.</div>`;
+      return;
+    }
+
+    destroy3D();
+
+    const graphData = {
+      nodes: (graph.nodes || []).map((node) => ({
+        id: node.uid,
+        uid: node.uid,
+        label: node.label,
+        name: node.nome || node.razao_social || node.uid,
+        color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
+        val: 5,
+      })),
+      links: (graph.edges || []).map((edge, index) => ({
+        id: `${edge.source}-${edge.target}-${edge.type}-${index}`,
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+      })),
+    };
+
+    currentGraph3D = ForceGraph3D()(container)
+      .backgroundColor("#090b0d")
+      .graphData(graphData)
+      .nodeColor("color")
+      .nodeVal("val")
+      .linkColor(() => "#4b5563")
+      .linkOpacity(0.55)
+      .linkWidth(1)
+      .nodeLabel((node) => `${node.label}: ${node.name}`)
+      .onNodeClick((node) => {
+        const [label, rawId] = String(node.uid).split(":");
+        if (label && rawId) {
+          onNodeTap(label, rawId, { nodeLabel: node.label, label: node.name });
+        }
+      });
+
+    if (window.SpriteText) {
+      currentGraph3D.nodeThreeObject((node) => {
+        const sprite = new SpriteText(node.name);
+        sprite.color = "#dbeafe";
+        sprite.textHeight = 3;
+        return sprite;
+      });
+    }
+  }
 
   function mergeGraphData(baseGraph, incomingGraph) {
     if (!baseGraph) {
@@ -421,8 +490,10 @@ function mountGraphPage(cytoscape) {
   }
 
   async function redrawGraph() {
-    if (currentCy) currentCy.destroy();
-    currentCy = await renderGraph(cytoscape, currentGraph, async (nextLabel, nextId, data) => {
+    $("#graph-canvas").classList.toggle("hidden", graphMode !== "2d");
+    $("#graph-canvas-3d").classList.toggle("hidden", graphMode !== "3d");
+
+    const onNodeTap = async (nextLabel, nextId, data) => {
       $("#graph-selection").innerHTML = `${labelBadge(data.nodeLabel)}<div style="margin-top:10px;" class="result-title">${data.label}</div><div class="muted mono" style="margin-top:6px;">${nextId}</div>`;
       $("#graph-meta").textContent = `Expandindo conexoes de ${data.label}...`;
 
@@ -440,7 +511,19 @@ function mountGraphPage(cytoscape) {
       } catch (error) {
         $("#graph-meta").textContent = `Falha ao expandir ${data.label}.`;
       }
-    });
+    };
+
+    if (graphMode === "2d") {
+      destroy3D();
+      if (currentCy) currentCy.destroy();
+      currentCy = await renderGraph2D(cytoscape, currentGraph, onNodeTap);
+    } else {
+      if (currentCy) {
+        currentCy.destroy();
+        currentCy = null;
+      }
+      await renderGraph3D(currentGraph, onNodeTap);
+    }
   }
 
   $("#graph-legend").innerHTML = [
@@ -516,7 +599,7 @@ function mountGraphPage(cytoscape) {
       `;
 
       await redrawGraph();
-      $("#graph-meta").textContent = "Clique em um no para usar como nova raiz visual.";
+      $("#graph-meta").textContent = "Clique em um no para adicionar novas conexoes ao grafo atual.";
     } catch (error) {
       $("#graph-meta").textContent = "Nao foi possivel carregar o grafo.";
       $("#graph-selection").innerHTML = `<div class="error-state">${error.message}</div>`;
@@ -524,14 +607,27 @@ function mountGraphPage(cytoscape) {
   }
 
   $("#graph-load").addEventListener("click", () => {
-    loadGraph($("#graph-label").value, $("#graph-id").value.trim(), $("#graph-hops").value);
+    loadGraph($("#graph-label").value, $("#graph-id").value.trim(), 1);
   });
+
+  document.querySelectorAll(".mode-option").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const nextMode = button.dataset.mode;
+      if (nextMode === graphMode) return;
+      graphMode = nextMode;
+      syncModeButtons();
+      if (currentGraph) {
+        await redrawGraph();
+      }
+    });
+  });
+
+  syncModeButtons();
 
   if (initialLabel && initialId) {
     $("#graph-label").value = initialLabel;
     $("#graph-id").value = initialId;
-    $("#graph-hops").value = initialHops;
-    loadGraph(initialLabel, initialId, initialHops);
+    loadGraph(initialLabel, initialId, 1);
   }
 }
 
@@ -642,7 +738,7 @@ function mountProfilePage(cytoscape) {
       }
 
       const graph = await apiFetch(`/graph/expand?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1&max_nodes=100`);
-      await renderGraph(cytoscape, graph, async (nextLabel, nextId, data) => {
+      await renderGraph2D(cytoscape, graph, async (nextLabel, nextId, data) => {
         $("#graph-meta").textContent = `${data.label} selecionado. Abra o perfil dedicado para aprofundar.`;
       });
       $("#graph-meta").textContent = `${graph.nodes.length} nos e ${graph.edges.length} arestas carregados.`;
