@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deps import get_driver, close_driver
+from observability import MetricsMiddleware, metrics_response
 from routers import search, pessoa, empresa, parlamentar, graph, patterns
 
 
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(MetricsMiddleware)
 
 app.include_router(search.router)
 app.include_router(pessoa.router)
@@ -38,3 +40,8 @@ app.include_router(patterns.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+def metrics():
+    return metrics_response()
