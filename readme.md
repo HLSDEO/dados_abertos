@@ -34,6 +34,7 @@ docker compose run --rm etl
 #### Flags disponíveis
 ```bash
 docker compose run --rm etl download cnpj --chunk 100000 --workers 4
+docker compose run --rm etl download cnpj --limite 10000 # limita o numero de linhas carregadas
 docker compose run --rm etl download tse --eleicao 2024 --eleicao 2022
 docker compose run --rm etl pipeline cnpj --history   # todos os snapshots
 docker compose run --rm etl run cnpj --full           # download + pipeline + analytics
@@ -44,7 +45,6 @@ docker compose run --rm etl run cnpj --full           # download + pipeline + an
 docker compose run --rm etl analytics gds       # Louvain, PageRank, Betweenness, NodeSimilarity
 docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas *
 ```
-> \* Requer `pip install splink duckdb` (ou descomente em `etl/requirements.txt` e rebuilde a imagem)
 
 #### Schema e status
 ```bash
@@ -63,13 +63,17 @@ docker compose build --no-cache etl
 | :--- | :--- | :--- |
 | ibge | IBGE — municípios e estados | Regiao, Estado, Municipio |
 | cnpj | Receita Federal — empresas, sócios, estabelecimentos | Empresa, Pessoa, **Partner**, Municipio |
-| siafi | Órgãos e unidades com código SIAFI | UnidadeGestora, Orgao, Esfera |
+| siafi | SIAFI — órgãos e unidades com código SIAFI | UnidadeGestora, Orgao, Esfera |
 | servidores_cgu | CGU — servidores SIAPE e militares | Servidor |
 | emendas_cgu | CGU — emendas parlamentares | Emenda, Parlamentar |
 | tse | TSE — candidatos a eleições e doadores | Pessoa, Partido, Eleicao |
 | sancoes_cgu | CGU — sanções aplicadas a empresas | Sancao |
-| pncp | Portal Nacional de Contratações Públicas | Contrato, Licitacao |
+| pncp | Portal Nacional de Contratações Públicas | ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao |
 | tesouro_transparente | Ordens bancárias de emendas parlamentares | — |
+| pgfn | PGFN — dívida ativa (não previdenciária e previdenciária) | DividaAtiva |
+| camara | Câmara dos Deputados — despesas CEAP | Despesa, Parlamentar |
+| bndes | BNDES — operações de financiamento | Emprestimo |
+| senado | Senado Federal — despesas CEAP | Despesa, Parlamentar (id_senado) |
 
 ## API
 
@@ -78,11 +82,43 @@ Documentação interativa: http://localhost:8000/docs
 | Endpoint | Descrição |
 | :--- | :--- |
 | `GET /search?q=texto` | Busca fulltext em todos os tipos de entidade |
-| `GET /pessoa/{cpf}` | Perfil: sócios, servidor, candidaturas, sanções indiretas |
+| `GET /pessoa/{cpf}` | Perfil: sócios, servidor, candidaturas, sanções indiretas, parlamentar (se houver) |
 | `GET /empresa/{cnpj_basico}` | Perfil: sócios, sanções, contratos, emendas, similares |
-| `GET /parlamentar/{id}` | Perfil: emendas, empresas beneficiadas, doadores |
-| `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges) |
+| `GET /parlamentar/{parlamentar_id}` | Perfil: emendas, empresas beneficiadas, doadores, sanções indiretas. Busca por `id_camara`, `id_senado`, `id` ou `cpf` |
+| `GET /graph/expand?label=Pessoa&id=...&hops=1` | Subgrafo para visualização (nodes + edges). Retorna `nome` e `razao_social` proeminentes |
+| `GET /patterns/empresa/{cnpj_basico}` | Padrões de corrupção/irregularidade de uma empresa. 
+| `GET /patterns/estado/{uf}` | Padrões de corrupção/irregularidade de empresas de um estado. 
 | `GET /docs` | Swagger UI |
+
+#### PATTERNS
+
+Os Endpoint's `GET /patterns/` — motor de padrões de corrupção/irregularidade. Retorna apenas padrões disparados (`triggered=true`) com evidências.
+
+| ID | Nome | O que detecta | Dados usados | Status |
+|---|---|---|---|---|
+| `sanctioned_contract` | Empresa sancionada recebendo contrato | Sanção vigente se sobrepõe à data do contrato | `Sancao` × `Contrato` | ✅ |
+| `sanctioned_bid` | Empresa sancionada com licitação publicada | Sanção vigente se sobrepõe à data da licitação | `Sancao` × `Licitacao` | ✅ |
+| `amendment_owner` | Parlamentar destina emenda para empresa onde é sócio | Parlamentar → Emenda → Empresa ← Sócio ← Pessoa (parlamentar) | `Emenda` × `MESMO_QUE` | ✅ |
+| `contract_concentration` | Concentração de contratos ≥60% num órgão | Agregação de `FIRMOU_CONTRATO` por órgão | `Contrato` | ✅ |
+| `split_contracts` | Fracionamento de contratos < R$80k | Múltiplos contratos no mesmo órgão abaixo do limite | `Contrato` | ✅ |
+| `inexigibility_recurrence` | Inexigibilidade recorrente ≥3 contratações | Múltiplos contratos diretos via inexigibilidade | `Contrato` × `Licitacao` | ✅ |
+| `servant_company` | Servidor público ativo sócio da empresa contratada | Servidor ativo vinculado à empresa que recebe contrato | `Servidor` × `SOCIO_DE` × `FIRMOU_CONTRATO` | ✅ |
+| `donation_contract` | Empresa doadora com contratos públicos (correlação) | Doação de campanha seguida de contrato no mesmo ano | `DOOU_PARA` × `FIRMOU_CONTRATO` | ✅ |
+| `debtor_contracts` | Inadimplente recebendo contrato público | Dívida ativa (PGFN) vigente se sobrepõe ao contrato | `DividaAtiva` × `FIRMOU_CONTRATO` | ✅ |
+| `expense_supplier_overlap` | Parlamentar gasta CEAP com empresa que recebeu emenda | Deputado gasta com fornecedor que recebeu sua emenda | `Despesa` × `BENEFICIOU` (Câmara) | ✅ |
+| `bndes_sanction_overlap` | Empresa recebe BNDES e está sancionada | Empréstimo BNDES + Sanção vigente na mesma empresa | `Emprestimo` × `Sancao` | ✅ |
+| `enrichment_signal` | Sócio servidor com patrimônio declarado suspeito | Servidor público com bens declarados > R$ 500k (TSE) | `BemDeclarado` × `EH_SERVIDOR` × `DECLAROU_BEM` | ✅ |
+
+## Arquitetura
+
+| Camada | Tecnologia |
+| :--- | :--- |
+| Banco de Grafo | Neo4j 5 Community + GDS |
+| API | FastAPI (Python 3.12+) |
+| Frontend | — (a implementar) |
+| ETL | Python 3.12 (pandas, splink opcional) |
+| Infra | Docker Compose |
+
 
 ## Consultas úteis no Neo4j
 
@@ -101,16 +137,6 @@ MATCH (r:IngestionRun {source_id: source, started_at: last})
 RETURN source, r.status, r.rows_in, r.rows_out, r.started_at
 ORDER BY source
 ```
-
-## Arquitetura
-
-| Camada | Tecnologia |
-| :--- | :--- |
-| Banco de Grafo | Neo4j 5 Community + GDS |
-| API | FastAPI (Python 3.12+) |
-| Frontend | — (a implementar) |
-| ETL | Python 3.12 (pandas, splink opcional) |
-| Infra | Docker Compose |
 
 ## Features
 

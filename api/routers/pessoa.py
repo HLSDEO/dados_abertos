@@ -5,7 +5,7 @@ router = APIRouter(prefix="/pessoa", tags=["pessoa"])
 
 
 @router.get("/{cpf}")
-def get_pessoa(cpf: str):
+def get_pessoa(cpf: str, limit: int = Query(100, ge=1, le=100)):
     driver = get_driver()
     with driver.session() as s:
 
@@ -23,8 +23,9 @@ def get_pessoa(cpf: str):
                    e.situacao_cadastral AS situacao, e.uf AS uf,
                    r.qualificacao AS qualificacao, r.data_entrada AS data_entrada
             ORDER BY r.data_entrada DESC
+            LIMIT $limit
             """,
-            cpf=cpf,
+            cpf=cpf, limit=limit,
         ).data()
 
         servidor = s.run(
@@ -43,18 +44,19 @@ def get_pessoa(cpf: str):
                    c.situacao AS situacao, c.nome_urna AS nome_urna,
                    c.partido AS partido
             ORDER BY el.ano DESC
+            LIMIT $limit
             """,
-            cpf=cpf,
+            cpf=cpf, limit=limit,
         ).data()
 
         sancoes_indir = s.run(
             """
-            MATCH (p:Pessoa {cpf: $cpf})-[:SOCIO_DE]->(e:Empresa)-[:POSSUI_SANCAO]->(san:Sancao)
+            MATCH (p:Pessoa {cpf: $cpf})-[r:SOCIO_DE]->(e:Empresa)-[:POSSUI_SANCAO]->(san:Sancao)
             RETURN e.razao_social AS empresa, san.tipo_sancao AS tipo,
-                   san.data_inicio_sancao AS inicio, san.motivo_sancao AS motivo
-            LIMIT 50
+                   san.data_inicio AS inicio, san.motivo_sancao AS motivo
+            LIMIT $limit
             """,
-            cpf=cpf,
+            cpf=cpf, limit=limit,
         ).data()
 
         duplicatas = s.run(
@@ -63,9 +65,33 @@ def get_pessoa(cpf: str):
             RETURN p2.cpf AS cpf, p2.nome AS nome,
                    r.score AS score, r.confianca AS confianca
             ORDER BY r.score DESC
+            LIMIT $limit
+            """,
+            cpf=cpf, limit=limit,
+        ).data()
+
+        # Verifica se a pessoa é parlamentar (via MESMO_QUE com Parlamentar)
+        parlamentar = s.run(
+            """
+            MATCH (p:Pessoa {cpf: $cpf})-[r:MESMO_QUE]-(par:Parlamentar)
+            RETURN par.codigo_autor AS parlamentar_id,
+                   par.nome_autor AS nome_parlamentar
+            LIMIT 1
             """,
             cpf=cpf,
-        ).data()
+        ).single()
+
+        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
+        if not parlamentar:
+            parlamentar = s.run(
+                """
+                MATCH (par:Parlamentar {cpf: $cpf})
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlamentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
 
     return {
         "pessoa":           pessoa,
@@ -74,4 +100,5 @@ def get_pessoa(cpf: str):
         "candidaturas":     candidaturas,
         "sancoes_indiretas": sancoes_indir,
         "duplicatas":       duplicatas,
+        "parlamentar":      dict(parlamentar) if parlamentar else None,
     }

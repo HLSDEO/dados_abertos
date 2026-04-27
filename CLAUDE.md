@@ -116,7 +116,7 @@ Comandos: `download | pipeline | analytics | run | schema | ingestion-status`
 | tesouro_transparente | `5-tesouro_transparente.py` | — | — |
 | servidores_cgu | `6-servidores_cgu.py` | `4-servidores_cgu.py` | Servidor |
 | sancoes_cgu | `7-sancoes_cgu.py` | `7-sancoes_cgu.py` | Sancao |
-| pncp | `8-pncp.py` | `8-pncp.py` | Contrato, Licitacao |
+| pncp | `8-pncp.py` | `8-pncp.py` | ItemResultado, Fornecedor, ContratoComprasNet, Empenho, Orgao |
 | siafi | — | `3-siafi.py` | UnidadeGestora, Orgao, Esfera |
 
 ## Features Avançadas

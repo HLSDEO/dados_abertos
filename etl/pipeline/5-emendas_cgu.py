@@ -456,12 +456,24 @@ def _t_despesas(chunk: list[dict]) -> list[dict]:
 
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
-def _load_emendas(driver) -> None:
+def _load_emendas(driver, limite: int | None = None, stats: dict = None) -> None:
     path = DATA_DIR / "emendas.csv"
     parl_t = func_t = prog_t = em_t = 0
+    if stats is None:
+        stats = {'total': 0}
 
     with driver.session() as session:
         for chunk in iter_csv(path):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [emendas] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
+
             t = _t_emendas(chunk)
             if t["parlamentares"]:
                 run_batches(session, Q_PARLAMENTAR, t["parlamentares"])
@@ -475,12 +487,11 @@ def _load_emendas(driver) -> None:
             if t["emendas"]:
                 run_batches(session, Q_EMENDA, t["emendas"])
                 em_t += len(t["emendas"])
+                stats['total'] += len(t["emendas"])
             if t["autoriais"]:
                 run_batches(session, Q_AUTORIA, t["autoriais"])
             if t["dest_mun"]:
-                # primeiro tenta pelo id IBGE (constraint → O(1))
                 run_batches(session, Q_EMENDA_MUNICIPIO, t["dest_mun"])
-                # fallback para municípios RF sem id IBGE
                 run_batches(session, Q_EMENDA_MUNICIPIO_RF, t["dest_mun"])
             if t["dest_est"]:
                 run_batches(session, Q_EMENDA_ESTADO, t["dest_est"])
@@ -490,30 +501,52 @@ def _load_emendas(driver) -> None:
     log.info(f"    ✓ emendas={em_t:,}  parlamentares={parl_t:,}  funções={func_t:,}")
 
 
-def _load_convenios(driver) -> None:
+def _load_convenios(driver, limite: int | None = None, stats: dict = None) -> None:
     path = DATA_DIR / "convenios.csv"
     total = 0
-    # batch menor — convênios têm MERGE em dois nós + rel
+    if stats is None:
+        stats = {'total': 0}
     batch_conv = min(BATCH, 500)
     with driver.session() as session:
         for chunk in iter_csv(path, chunk_size=10000):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [convenios] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             rows = _t_convenios(chunk)
             if not rows:
                 continue
             run_batches(session, Q_CONVENIO_NOS, rows, batch=batch_conv)
             run_batches(session, Q_CONVENIO_REL, rows, batch=batch_conv)
             total += len(rows)
+            stats['total'] += len(rows)
     log.info(f"    ✓ convênios={total:,}")
 
 
-def _load_por_favorecido(driver) -> None:
+def _load_por_favorecido(driver, limite: int | None = None, stats: dict = None) -> None:
     path = DATA_DIR / "por_favorecido.csv"
     if not path.exists():
         path = DATA_DIR / "despesas.csv"
     total = 0
+    if stats is None:
+        stats = {'total': 0}
     batch_desp = min(BATCH, 500)
     with driver.session() as session:
         for chunk in iter_csv(path, chunk_size=10000):
+            if limite is not None and stats['total'] >= limite:
+                log.info(f"    [por_favorecido] Limite de {limite:,} atingido. Parando.")
+                break
+            if limite is not None:
+                restante = limite - stats['total']
+                if restante <= 0:
+                    break
+                if len(chunk) > restante:
+                    chunk = chunk[:restante]
             rows = _t_despesas(chunk)
             if not rows:
                 continue
@@ -524,12 +557,13 @@ def _load_por_favorecido(driver) -> None:
             if com_cnpj:
                 run_batches(session, Q_DESPESA_EMPRESA, com_cnpj, batch=batch_desp)
             total += len(rows)
+            stats['total'] += len(rows)
     log.info(f"    ✓ por_favorecido={total:,}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[emendas_cgu] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -540,53 +574,91 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
         for q in Q_CONSTRAINTS + Q_INDEXES:
             session.run(q)
 
+    def _atingiu(stats_local):
+        return limite is not None and stats_local['total'] >= limite
+
     with IngestionRun(driver, "emendas_cgu"):
+        stats = {'total': 0}
+        atingiu_limite = False
+
         log.info("  [1/5] Emendas, parlamentares, funções...")
-        _load_emendas(driver)
+        _load_emendas(driver, limite, stats)
+        if _atingiu(stats):
+            log.info(f"  Limite de {limite:,} linhas atingido após emendas. Parando.")
+            atingiu_limite = True
 
-        log.info("  [2/5] Convênios...")
-        _load_convenios(driver)
+        if not atingiu_limite:
+            log.info("  [2/5] Convênios...")
+            _load_convenios(driver, limite, stats)
+            if _atingiu(stats):
+                log.info(f"  Limite de {limite:,} linhas atingido após convênios. Parando.")
+                atingiu_limite = True
 
-        log.info("  [3/5] Por favorecido...")
-        _load_por_favorecido(driver)
+        if not atingiu_limite:
+            log.info("  [3/5] Por favorecido...")
+            _load_por_favorecido(driver, limite, stats)
+            if _atingiu(stats):
+                log.info(f"  Limite de {limite:,} linhas atingido após por_favorecido. Parando.")
+                atingiu_limite = True
 
-        log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")
-        with driver.session() as session:
-            result = session.run(Q_EMENDA_BENEFICIOU)
-            summary = result.consume()
-            log.info(f"    ✓ {summary.counters.relationships_created:,} rels BENEFICIOU criadas  "
-                     f"({summary.counters.properties_set:,} props)")
-
-        log.info("  [5/5] Linkando Parlamentar → Pessoa (TSE)...")
-        exact_map, cand_tokens = _build_nome_cpf_map(driver)
-        if exact_map or cand_tokens:
-            link_rows = []
-            ambiguous = missed = 0
+        if not atingiu_limite:
+            log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")
             with driver.session() as session:
-                result = session.run(
-                    "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
-                )
-                for rec in result:
-                    cpf = _resolve_cpf(rec["nome"] or "", exact_map, cand_tokens)
-                    if cpf:
-                        link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
-                    else:
-                        tokens = _norm_tokens(rec["nome"] or "")
-                        if any(tokens & toks for toks, _ in cand_tokens):
-                            ambiguous += 1
-                        else:
-                            missed += 1
-            if link_rows:
+                result = session.run(Q_EMENDA_BENEFICIOU)
+                summary = result.consume()
+                log.info(f"    ✓ {summary.counters.relationships_created:,} rels BENEFICIOU criadas  "
+                         f"({summary.counters.properties_set:,} props)")
+
+            log.info("  [5/5] Linkando Parlamentar → Pessoa (TSE)...")
+            exact_map, cand_tokens = _build_nome_cpf_map(driver)
+            if exact_map or cand_tokens:
+                link_rows = []
+                ambiguous = missed = 0
                 with driver.session() as session:
-                    run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
-                log.info(
-                    f"    ✓ {len(link_rows):,} parlamentares linkados  "
-                    f"ambíguos={ambiguous}  sem_match={missed}"
-                )
+                    result = session.run(
+                        "MATCH (p:Parlamentar) RETURN p.codigo_autor AS cod, p.nome_autor AS nome"
+                    )
+                    for rec in result:
+                        cpf = _resolve_cpf(rec["nome"] or "", exact_map, cand_tokens)
+                        if cpf:
+                            link_rows.append({"codigo_autor": rec["cod"], "cpf": cpf})
+                        else:
+                            tokens = _norm_tokens(rec["nome"] or "")
+                            if any(tokens & toks for toks, _ in cand_tokens):
+                                ambiguous += 1
+                            else:
+                                missed += 1
+                if link_rows:
+                    with driver.session() as session:
+                        run_batches(session, Q_LINK_PARLAMENTAR_PESSOA, link_rows)
+                    log.info(
+                        f"    ✓ {len(link_rows):,} parlamentares linkados  "
+                        f"ambíguos={ambiguous}  sem_match={missed}"
+                    )
+                else:
+                    log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
             else:
-                log.info("    Nenhum parlamentar encontrado nos candidatos TSE")
-        else:
-            log.info("    Pulado — dados TSE não disponíveis")
+                log.info("    Pulado — dados TSE não disponíveis")
 
     driver.close()
     log.info("[emendas_cgu] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline Emendas CGU — carrega emendas parlamentares no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )

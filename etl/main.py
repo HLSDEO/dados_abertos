@@ -23,6 +23,7 @@ Uso:
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
   --workers N   ZIPs processados em paralelo (default: 2)
+  --limite N   Número máximo de linhas a processar (para testes rápidos)
   --history     Processa todos os snapshots (só pipelines que suportam)
   --full        No comando 'run': executa analytics após pipeline
   --eleicao ANO Ano de eleição — repetível (ex: --eleicao 2024 --eleicao 2022)
@@ -84,7 +85,9 @@ DOWNLOADS = {
     "sancoes_cgu":          "download/7-sancoes_cgu.py",
     "pncp":                 "download/8-pncp.py",
     "pgfn":                 "download/9-pgfn.py",
-    "cpgf":                 "download/10-cpgf.py",
+    "camara":               "download/11-camara.py",
+    "bndes":                "download/12-bndes.py",
+    "senado":               "download/13-senado.py",
 }
 
 PIPELINES = {
@@ -97,6 +100,9 @@ PIPELINES = {
     "sancoes_cgu":      "pipeline/7-sancoes_cgu.py",
     "pncp":             "pipeline/8-pncp.py",
     "pgfn":             "pipeline/9-pgfn.py",
+    "camara":           "pipeline/11-camara.py",
+    "bndes":            "pipeline/12-bndes.py",
+    "senado":            "pipeline/13-senado.py",
 }
 
 ANALYTICS = {
@@ -129,6 +135,7 @@ def _parse_flags(flags: list[str]) -> dict:
         "full":       False,
         "chunk_size": DEFAULT_CHUNK_SIZE,
         "workers":    DEFAULT_WORKERS,
+        "limite":     None,
         "eleicoes":   [],   # --eleicao ANO (repetível)
         "anos":       [],   # --ano ANO    (repetível)
         "meses":      [],   # --mes MES    (repetível)
@@ -140,7 +147,7 @@ def _parse_flags(flags: list[str]) -> dict:
             opts["history"] = True
         elif f == "--full":
             opts["full"] = True
-        elif f in ("--chunk", "--workers", "--eleicao", "--ano", "--mes"):
+        elif f in ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes"):
             if i + 1 < len(flags):
                 try:
                     val = int(flags[i + 1])
@@ -152,6 +159,8 @@ def _parse_flags(flags: list[str]) -> dict:
                     opts["chunk_size"] = val
                 elif f == "--workers":
                     opts["workers"] = val
+                elif f == "--limite":
+                    opts["limite"] = val
                 elif f == "--eleicao":
                     opts["eleicoes"].append(val)
                 elif f == "--ano":
@@ -216,6 +225,10 @@ def do_pipeline(names: list[str], opts: dict):
             kwargs["history"] = opts["history"]
         if "chunk_size" in sig.parameters:
             kwargs["chunk_size"] = opts["chunk_size"]
+        if "limite" in sig.parameters:
+            kwargs["limite"] = opts["limite"]
+            if opts["limite"] is not None:
+                log.info(f"  limite={opts['limite']:,}")
         if "eleicoes" in sig.parameters:
             kwargs["eleicoes"] = opts["eleicoes"] or None
             if kwargs["eleicoes"]:
@@ -258,20 +271,25 @@ def main():
     command = args[0]
     rest    = args[1:]
 
-    targets = [a for a in rest if not a.startswith("--")] or None
-
-    raw_flags = []
+    # Separa targets (nomes posicionais) e flags numa única passagem,
+    # consumindo corretamente os valores das flags que exigem argumento.
+    FLAGS_WITH_VALUE = ("--chunk", "--workers", "--limite", "--eleicao", "--ano", "--mes")
+    targets_list = []
+    raw_flags    = []
     i = 0
     while i < len(rest):
-        if rest[i].startswith("--"):
-            raw_flags.append(rest[i])
-            if rest[i] in ("--chunk", "--workers", "--eleicao", "--ano", "--mes") \
-                    and i + 1 < len(rest) and not rest[i+1].startswith("--"):
+        tok = rest[i]
+        if tok.startswith("--"):
+            raw_flags.append(tok)
+            if tok in FLAGS_WITH_VALUE and i + 1 < len(rest) and not rest[i+1].startswith("--"):
                 i += 1
                 raw_flags.append(rest[i])
+        else:
+            targets_list.append(tok)
         i += 1
 
-    opts = _parse_flags(raw_flags)
+    targets = targets_list or None
+    opts    = _parse_flags(raw_flags)
 
     if command == "download":
         names = targets or list(DOWNLOADS)

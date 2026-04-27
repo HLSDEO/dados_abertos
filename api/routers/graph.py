@@ -3,6 +3,7 @@ from deps import get_driver
 
 router = APIRouter(prefix="/graph", tags=["graph"])
 
+
 _LABEL_KEY = {
     "Pessoa":      "cpf",
     "Empresa":     "cnpj_basico",
@@ -18,19 +19,44 @@ _LABEL_KEY = {
     "Eleicao":     "id",
 }
 
+
 _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
                  "cpf", "cnpj_basico", "cnpj", "uf", "situacao_cadastral",
-                 "gds_pagerank", "gds_comunidade", "gds_betweenness"]
+                 "gds_pagerank", "gds_comunidade", "gds_betweenness",
+                 "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
+                 "tipo_sancao", "data_inicio", "numero_contrato", "valor_contratado_reais",
+                 "produto", "setor_bndes"]
 
 
 def _serialize_node(node) -> dict:
     label = list(node.labels)[0] if node.labels else "Node"
     key   = _LABEL_KEY.get(label)
     uid   = f"{label}:{node.get(key)}" if key and node.get(key) else f"eid:{node.element_id}"
-    nome  = (node.get("nome") or node.get("razao_social")
-             or node.get("nome_autor") or node.get("sigla") or "")
+
+    # Prioriza nome/razão social conforme o tipo de nó
+    nome = node.get("nome") or node.get("razao_social")
+    if not nome:
+        nome = node.get("nome_autor") or node.get("sigla") or ""
+    
+    razao_social = node.get("razao_social") or ""
+    cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
+
+    # Propriedades completas (todas as que existem no nó)
     props = {k: node.get(k) for k in _NODE_DISPLAY if node.get(k) is not None}
-    return {"uid": uid, "label": label, "nome": nome, "props": props}
+    # Garante que nome e razão social estejam em props
+    if nome and "nome" not in props:
+        props["nome"] = nome
+    if razao_social and "razao_social" not in props:
+        props["razao_social"] = razao_social
+
+    return {
+        "uid":          uid,
+        "label":        label,
+        "nome":         nome,
+        "razao_social": razao_social,
+        "cpf_cnpj":     cpf_cnpj,
+        "props":        props,
+    }
 
 
 def _serialize_rel(rel, src_uid: str, tgt_uid: str) -> dict:
@@ -54,6 +80,7 @@ def expand(
         raise HTTPException(400, f"Label desconhecido: {label}")
 
     driver = get_driver()
+
     with driver.session() as s:
         # 1. Verifica existência e conta o grau (total de conexões) em uma única query
         start = s.run(

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Query, HTTPException
 from deps import get_driver
 from patterns import PATTERNS, PATTERN_INDEX
 
@@ -32,7 +32,7 @@ def _run_pattern(session, pattern: dict, cnpj: str) -> dict:
     }
 
 
-@router.get("/{cnpj_basico}")
+@router.get("/empresa/{cnpj_basico}")
 def get_patterns(cnpj_basico: str):
     """
     Executa todos os padrões de corrupção/irregularidade para uma empresa.
@@ -57,14 +57,14 @@ def get_patterns(cnpj_basico: str):
     triggered = [r for r in results if r["triggered"]]
 
     return {
-        "cnpj_basico":     cnpj_basico,
-        "empresa":         empresa_nome,
+        "cnpj_basico":  cnpj_basico,
+        "empresa":      empresa_nome,
         "triggered_count": len(triggered),
-        "patterns":        results,
+        "patterns":     results,
     }
 
 
-@router.get("/{cnpj_basico}/{pattern_id}")
+@router.get("/empresa/{cnpj_basico}/{pattern_id}")
 def get_single_pattern(cnpj_basico: str, pattern_id: str):
     """Executa um padrão específico."""
     pattern = PATTERN_INDEX.get(pattern_id)
@@ -76,3 +76,57 @@ def get_single_pattern(cnpj_basico: str, pattern_id: str):
         result = _run_pattern(s, pattern, cnpj_basico)
 
     return {"cnpj_basico": cnpj_basico, **result}
+
+
+@router.get("/estado/{uf}")
+def get_state_patterns(uf: str, quantidade: int = Query(10, ge=1, le=100)):
+    """
+    Retorna as top empresas de um estado (UF) com maior número de padrões suspeitos.
+    quantidade: número de empresas a retornar (default 10)
+    """
+    driver = get_driver()
+    empresas_stats = []
+
+    with driver.session() as s:
+        # Busca empresas no estado via Município
+        result = s.run(
+            """
+            MATCH (e:Empresa)-[:LOCALIZADA_EM]->(m:Municipio)
+            WHERE m.uf = $uf OR m.sigla_uf = $uf
+            RETURN e.cnpj_basico AS cnpj, e.razao_social AS nome
+            LIMIT 200
+            """,
+            uf=uf,
+        ).data()
+
+        if not result:
+            return {"uf": uf, "total": 0, "empresas": []}
+
+        # Para cada empresa, conta padrões disparados (limita para evitar timeout)
+        for idx, emp in enumerate(result):
+            if idx >= 50:  # Limita a 50 empresas para evitar timeout
+                break
+            cnpj = emp["cnpj"]
+            nome = emp["nome"]
+            triggered_count = 0
+
+            for pattern in PATTERNS:
+                r = _run_pattern(s, pattern, cnpj)
+                if r["triggered"]:
+                    triggered_count += 1
+
+            if triggered_count > 0:
+                empresas_stats.append({
+                    "cnpj_basico": cnpj,
+                    "empresa":    nome,
+                    "triggered_count": triggered_count,
+                })
+
+    # Ordena por número de padrões disparados
+    empresas_stats.sort(key=lambda x: x["triggered_count"], reverse=True)
+
+    return {
+        "uf":          uf,
+        "total":       len(empresas_stats),
+        "empresas":   empresas_stats[:quantidade],
+    }

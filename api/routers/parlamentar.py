@@ -9,11 +9,15 @@ def get_parlamentar(parlamentar_id: str):
     driver = get_driver()
     with driver.session() as s:
 
+        # Tenta primeiro por id_camara (Câmara), depois por id, depois por cpf
         node = s.run(
-            "MATCH (p:Parlamentar {id: $id}) RETURN p", id=parlamentar_id
+            "MATCH (p:Parlamentar {id_camara: $id}) RETURN p", id=parlamentar_id
         ).single()
         if not node:
-            # tenta por CPF caso o id seja um CPF
+            node = s.run(
+                "MATCH (p:Parlamentar {id: $id}) RETURN p", id=parlamentar_id
+            ).single()
+        if not node:
             node = s.run(
                 "MATCH (p:Parlamentar {cpf: $id}) RETURN p", id=parlamentar_id
             ).single()

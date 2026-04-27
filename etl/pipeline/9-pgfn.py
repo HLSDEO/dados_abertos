@@ -153,31 +153,45 @@ def _t_dividas(chunk: list[dict]) -> tuple[list[dict], list[dict]]:
 
 # ── Loader ────────────────────────────────────────────────────────────────────
 
-def _load_dividas(driver) -> None:
+def _load_dividas(driver, limite: int | None = None, stats: dict = None) -> None:
     todos = sorted(DATA_DIR.glob("*.csv"))
     if not todos:
         log.warning("  Nenhum arquivo *.csv encontrado — execute download pgfn primeiro")
         return
+    if stats is None:
+        stats = {'total': 0}
 
     for path in todos:
         log.info(f"  Carregando {path.name}...")
         pj_t = pf_t = skip_t = 0
         with driver.session() as session:
             for chunk in iter_csv(path):
+                if limite is not None and stats['total'] >= limite:
+                    log.info(f"    [dividas] Limite de {limite:,} atingido. Parando.")
+                    return
+                if limite is not None:
+                    restante = limite - stats['total']
+                    if restante <= 0:
+                        return
+                    if len(chunk) > restante:
+                        chunk = chunk[:restante]
+
                 pj, pf = _t_dividas(chunk)
                 skip_t += len(chunk) - len(pj) - len(pf)
                 if pj:
                     run_batches(session, Q_DIVIDA_EMPRESA, pj)
                     pj_t += len(pj)
+                    stats['total'] += len(pj)
                 if pf:
                     run_batches(session, Q_DIVIDA_PESSOA, pf)
                     pf_t += len(pf)
+                    stats['total'] += len(pf)
         log.info(f"    ✓ {path.name}  PJ={pj_t:,}  PF={pf_t:,}  sem_doc={skip_t:,}")
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info(f"[pgfn] Pipeline  chunk={CHUNK_SIZE:,}  batch={BATCH}")
 
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
@@ -190,7 +204,28 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
 
     with IngestionRun(driver, "pgfn"):
         log.info("  [1/1] Dívidas → DividaAtiva, POSSUI_DIVIDA...")
-        _load_dividas(driver)
+        stats = {'total': 0}
+        _load_dividas(driver, limite, stats)
 
     driver.close()
     log.info("[pgfn] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline PGFN — carrega dívida ativa da União no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )

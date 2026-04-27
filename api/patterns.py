@@ -182,8 +182,115 @@ PATTERNS: list[dict] = [
         """,
     },
 
-    # ── LOW RISK ─────────────────────────────────────────────────────────────
+    {
+        "id": "debtor_contracts",
+        "name_pt": "Inadimplente recebendo contrato público",
+        "risk_level": "medium",
+        "cypher": """
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:POSSUI_DIVIDA]->(d:DividaAtiva)
+            WHERE d.situacao = 'Ativa' OR d.situacao = 'Aberta'
+            MATCH (emp)-[:FIRMOU_CONTRATO]->(c:Contrato)
+            WHERE c.data_assinatura >= d.data_inscricao
+            WITH count(DISTINCT c) AS count,
+                  sum(c.valor_global) AS valor_total,
+                  collect(DISTINCT {
+                      tipo:  "DividaAtiva",
+                      id:    d.divida_id,
+                      label: d.tipo_credito + " (R$ " + toString(d.valor_consolidado) + ")"
+                  })[..3] AS ev_divida,
+                  collect(DISTINCT {
+                      tipo:  "Contrato",
+                      id:    c.contrato_id,
+                      label: c.nome_orgao + " — R$ " + toString(c.valor_global) + " (" + c.data_assinatura + ")"
+                  })[..5] AS ev_contratos
+            WHERE count > 0
+            RETURN count, valor_total, ev_divida + ev_contratos AS evidence
+        """,
+    },
 
+    {
+        "id": "expense_supplier_overlap",
+        "name_pt": "Parlamentar gasta CEAP com empresa que recebe emenda",
+        "risk_level": "medium",
+        "cypher": """
+            MATCH (par:Parlamentar)-[:AUTORA_DE]->(em:Emenda)-[:DESTINADA_A]->(m:Municipio)
+            MATCH (emp:Empresa)-[:LOCALIZADA_EM]->(m)
+            MATCH (par)-[:GASTOU]->(d:Despesa)
+            WHERE (d.nome_fornecedor CONTAINS emp.razao_social
+                  OR (d.cnpj_fornecedor IS NOT NULL AND emp.cnpj_basico = d.cnpj_fornecedor))
+            WITH par, emp, count(DISTINCT em) AS emendas_count,
+                  sum(em.valor_pago) AS valor_emendas,
+                  collect(DISTINCT {
+                      tipo:  "Emenda",
+                      id:    em.codigo_emenda,
+                      label: "R$ " + toString(em.valor_pago) + " (" + em.ano + ")"
+                  })[..3] AS ev_emendas,
+                  collect(DISTINCT {
+                      tipo:  "Despesa",
+                      id:    d.despesa_id,
+                      label: d.tipo_despesa + " — R$ " + toString(d.valor_liquido) + " (" + toString(d.mes) + "/" + toString(d.ano) + ")"
+                  })[..5] AS ev_despesas
+            WHERE emendas_count > 0
+            RETURN count(DISTINCT par) AS count,
+                   valor_emendas AS valor_total,
+                   ev_emendas + ev_despesas AS evidence
+        """,
+    },
+
+    {
+        "id": "bndes_sanction_overlap",
+        "name_pt": "Empresa recebe BNDES e está sancionada",
+        "risk_level": "medium",
+        "cypher": """
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:RECEBU_EMPRESTIMO]->(e:Emprestimo)
+            MATCH (emp)-[:POSSUI_SANCAO]->(s:Sancao)
+            WHERE s.data_inicio IS NOT NULL
+            WITH count(DISTINCT e) AS count,
+                  sum(e.valor_contratado_reais) AS valor_total,
+                  collect(DISTINCT {
+                      tipo:  "Emprestimo",
+                      id:    e.emprestimo_id,
+                      label: e.produto + " — R$ " + toString(e.valor_contratado_reais) + " (" + e.data_da_contratacao + ")"
+                  })[..3] AS ev_emprestimos,
+                  collect(DISTINCT {
+                      tipo:  "Sancao",
+                      id:    s.sancao_id,
+                      label: s.tipo_sancao + " (" + s.data_inicio + "→" + coalesce(s.data_fim,"vigente") + ")"
+                  })[..3] AS ev_sancoes
+            WHERE count > 0
+            RETURN count, valor_total, ev_emprestimos + ev_sancoes AS evidence
+        """,
+    },
+
+    {
+        "id": "enrichment_signal",
+        "name_pt": "Sócio servidor com patrimônio declarado suspeito",
+        "risk_level": "medium",
+        "cypher": """
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})<-[:SOCIO_DE]-(p:Pessoa)
+            WHERE EXISTS { (p)-[:EH_SERVIDOR]->(:Servidor) }
+              AND EXISTS { (p)-[:DECLAROU_BEM]->(:BemDeclarado) }
+            MATCH (p)-[:EH_SERVIDOR]->(srv:Servidor)
+            MATCH (p)-[:DECLAROU_BEM]->(b:BemDeclarado)
+            WITH p, srv, sum(b.valor) AS total_bens,
+                 collect(DISTINCT {
+                     tipo:  "Servidor",
+                     id:    srv.id_servidor,
+                     label: srv.nome + " — " + srv.cargo + " (" + srv.org_exercicio + ")"
+                 })[..3] AS ev_servidor,
+                 collect(DISTINCT {
+                     tipo:  "BemDeclarado",
+                     id:    b.bem_id,
+                     label: b.tipo_bem + " — R$ " + toString(b.valor) + " (" + toString(b.ano_eleicao) + ")"
+                 })[..5] AS ev_bens
+            WHERE total_bens > 1500000
+            RETURN count(DISTINCT p) AS count,
+                   total_bens AS valor_total,
+                   ev_servidor + ev_bens AS evidence
+        """,
+    },
+
+    # ── LOW RISK ─────────────────────────────────────
     {
         "id": "donation_contract",
         "name_pt": "Empresa doadora de campanha com contratos públicos (correlação)",

@@ -1,12 +1,9 @@
 *.csv
-/neo4j/conf
-/neo4j/data
-/neo4j/import
-/neo4j/logs
+/neo4j/
 *.zip
 *.jar
 *.log
 *.xlsx
-/etl/data/pncp
+/etl/data/
 *.pyc
-frontend_teste/
+/.kilo

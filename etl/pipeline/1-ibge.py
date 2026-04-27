@@ -122,7 +122,7 @@ MERGE (c)-[:PERTENCE_A]->(mi)
 
 # ── entry-point ───────────────────────────────────────────────────────────────
 
-def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
+def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None = None):
     log.info("[ibge] Iniciando pipeline → Neo4j")
 
     driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
@@ -134,19 +134,55 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             for q in Q_CONSTRAINTS:
                 session.run(q)
 
-            steps = [
-                ("regioes",       Q_REGIOES),
-                ("estados",       Q_ESTADOS),
-                ("mesorregioes",  Q_MESORREGIOES),
-                ("microrregioes", Q_MICRORREGIOES),
-                ("municipios",    Q_MUNICIPIOS),
-            ]
+        steps = [
+            ("regioes",       Q_REGIOES),
+            ("estados",       Q_ESTADOS),
+            ("mesorregioes",  Q_MESORREGIOES),
+            ("microrregioes", Q_MICRORREGIOES),
+            ("municipios",    Q_MUNICIPIOS),
+        ]
 
-            for name, query in steps:
-                rows = _read_csv(name)
-                log.info(f"  Carregando {name}...")
+        total_global = 0
+        for name, query in steps:
+            rows = _read_csv(name)
+            if limite is not None:
+                restante = limite - total_global
+                if restante <= 0:
+                    log.info(f"    Limite de {limite:,} linhas atingido. Parando.")
+                    break
+                if len(rows) > restante:
+                    rows = rows[:restante]
+                    log.info(f"    Limitando {name} para {restante:,} linhas (de {len(rows):,})")
+
+            log.info(f"  Carregando {name}...")
+            with driver.session() as session:
                 _run_batch(session, query, rows)
-                run_ctx.add(len(rows))
+            total_global += len(rows)
+            run_ctx.add(len(rows))
+
+            if limite is not None and total_global >= limite:
+                log.info(f"    Limite de {limite:,} linhas atingido após {name}. Parando.")
+                break
 
     driver.close()
     log.info("[ibge] Pipeline concluído")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Pipeline IBGE — carrega localidades no Neo4j")
+    parser.add_argument("--limite", type=int, default=None, help="Número máximo de linhas a inserir (carga parcial)")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    run(
+        neo4j_uri=os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+        neo4j_user=os.environ.get("NEO4J_USER", "neo4j"),
+        neo4j_password=os.environ.get("NEO4J_PASSWORD", "senha"),
+        limite=args.limite,
+    )
