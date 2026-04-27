@@ -279,7 +279,17 @@ async function renderGraph(cytoscape, graph, onNodeTap) {
   const cy = cytoscape({
     container: $("#graph-canvas"),
     elements,
-    layout: { name: "cose", animate: false, fit: true, padding: 30 },
+    layout: {
+      name: "cose",
+      animate: false,
+      fit: true,
+      padding: 60,
+      spacingFactor: 1.35,
+      nodeRepulsion: 120000,
+      idealEdgeLength: 140,
+      edgeElasticity: 80,
+      gravity: 0.2,
+    },
     style: [
       {
         selector: "node",
@@ -287,12 +297,12 @@ async function renderGraph(cytoscape, graph, onNodeTap) {
           label: "data(label)",
           "background-color": "data(color)",
           color: "#dbeafe",
-          "font-size": 11,
+          "font-size": 9,
           "font-weight": 700,
           "text-wrap": "wrap",
-          "text-max-width": 110,
-          width: 28,
-          height: 28,
+          "text-max-width": 84,
+          width: 24,
+          height: 24,
           "border-width": 1,
           "border-color": "#081017",
         },
@@ -371,12 +381,84 @@ function mountGraphPage(cytoscape) {
           <div class="card-title">Estatisticas</div>
           <div id="graph-stats" class="pill-row"></div>
         </section>
+        <section class="card">
+          <div class="card-title">Legenda</div>
+          <div id="graph-legend" class="graph-legend"></div>
+        </section>
       </div>
     </section>
   `;
 
   let currentGraph = null;
   let currentCy = null;
+
+  function mergeGraphData(baseGraph, incomingGraph) {
+    if (!baseGraph) {
+      return {
+        nodes: [...(incomingGraph.nodes || [])],
+        edges: [...(incomingGraph.edges || [])],
+        meta: incomingGraph.meta || {},
+      };
+    }
+
+    const nodesByUid = new Map((baseGraph.nodes || []).map((node) => [node.uid, node]));
+    for (const node of incomingGraph.nodes || []) {
+      nodesByUid.set(node.uid, { ...(nodesByUid.get(node.uid) || {}), ...node });
+    }
+
+    const edgesByKey = new Map(
+      (baseGraph.edges || []).map((edge) => [`${edge.source}|${edge.target}|${edge.type}`, edge])
+    );
+    for (const edge of incomingGraph.edges || []) {
+      edgesByKey.set(`${edge.source}|${edge.target}|${edge.type}`, edge);
+    }
+
+    return {
+      nodes: Array.from(nodesByUid.values()),
+      edges: Array.from(edgesByKey.values()),
+      meta: incomingGraph.meta || baseGraph.meta || {},
+    };
+  }
+
+  async function redrawGraph() {
+    if (currentCy) currentCy.destroy();
+    currentCy = await renderGraph(cytoscape, currentGraph, async (nextLabel, nextId, data) => {
+      $("#graph-selection").innerHTML = `${labelBadge(data.nodeLabel)}<div style="margin-top:10px;" class="result-title">${data.label}</div><div class="muted mono" style="margin-top:6px;">${nextId}</div>`;
+      $("#graph-meta").textContent = `Expandindo conexoes de ${data.label}...`;
+
+      try {
+        const expanded = await apiFetch(`/graph/expand?label=${encodeURIComponent(nextLabel)}&id=${encodeURIComponent(nextId)}&hops=1&max_nodes=80`);
+        currentGraph = mergeGraphData(currentGraph, expanded);
+        $("#graph-stats").innerHTML = `
+          <span class="pill">${currentGraph.nodes.length} nos</span>
+          <span class="pill">${currentGraph.edges.length} arestas</span>
+          <span class="pill">ultimo grau ${expanded.meta.degree}</span>
+          <span class="pill">expansao acumulada</span>
+        `;
+        await redrawGraph();
+        $("#graph-meta").textContent = `Conexoes de ${data.label} adicionadas ao grafo.`;
+      } catch (error) {
+        $("#graph-meta").textContent = `Falha ao expandir ${data.label}.`;
+      }
+    });
+  }
+
+  $("#graph-legend").innerHTML = [
+    ["Verde", "Pessoa", LABEL_COLORS.Pessoa],
+    ["Azul", "Empresa", LABEL_COLORS.Empresa],
+    ["Amarelo", "Parlamentar", LABEL_COLORS.Parlamentar],
+    ["Laranja", "Servidor", LABEL_COLORS.Servidor],
+    ["Vermelho", "Sancao", LABEL_COLORS.Sancao],
+    ["Roxo", "Emenda", LABEL_COLORS.Emenda],
+    ["Cinza", "Municipio", LABEL_COLORS.Municipio],
+    ["Cinza claro", "Estado", LABEL_COLORS.Estado],
+    ["Azul claro", "Partner", LABEL_COLORS.Partner],
+  ].map(([colorName, label, color]) => `
+    <div class="graph-legend-item">
+      <span class="graph-legend-dot" style="background:${color};"></span>
+      <span>${colorName} - ${label}</span>
+    </div>
+  `).join("");
 
   async function resolveGraphTarget(label, rawValue) {
     const term = rawValue.trim();
@@ -433,20 +515,7 @@ function mountGraphPage(cytoscape) {
         <span class="pill">${currentGraph.meta.is_supernode ? "limite superno ativo" : "expansao completa"}</span>
       `;
 
-      if (currentCy) currentCy.destroy();
-      currentCy = await renderGraph(cytoscape, currentGraph, async (nextLabel, nextId, data) => {
-        $("#graph-selection").innerHTML = `${labelBadge(data.nodeLabel)}<div style="margin-top:10px;" class="result-title">${data.label}</div><div class="muted mono" style="margin-top:6px;">${nextId}</div>`;
-        $("#graph-meta").textContent = `Expandindo a partir de ${data.label}...`;
-        try {
-          $("#graph-label").value = nextLabel;
-          $("#graph-id").value = nextId;
-          $("#graph-hops").value = "1";
-          await loadGraph(nextLabel, nextId, 1);
-          $("#graph-meta").textContent = `Rede atualizada para ${data.label}.`;
-        } catch (error) {
-          $("#graph-meta").textContent = `Falha ao expandir ${data.label}.`;
-        }
-      });
+      await redrawGraph();
       $("#graph-meta").textContent = "Clique em um no para usar como nova raiz visual.";
     } catch (error) {
       $("#graph-meta").textContent = "Nao foi possivel carregar o grafo.";
