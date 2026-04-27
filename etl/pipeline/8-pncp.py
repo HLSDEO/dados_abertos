@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from neo4j import GraphDatabase
-from pipeline.lib import wait_for_neo4j, run_batches, IngestionRun, setup_schema
+from pipeline.lib import wait_for_neo4j, run_batches, IngestionRun, apply_schema, setup_schema
 
 log = logging.getLogger(__name__)
 

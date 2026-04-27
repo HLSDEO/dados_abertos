@@ -18,7 +18,7 @@ import os
 import re
 from pathlib import Path
 
-from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, setup_schema
+from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, apply_schema, setup_schema
 
 log = logging.getLogger(__name__)
 
@@ -199,8 +199,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
-        for q in Q_CONSTRAINTS + Q_INDEXES:
-            session.run(q)
+        apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
     with IngestionRun(driver, "pgfn"):
         log.info("  [1/1] Dívidas → DividaAtiva, POSSUI_DIVIDA...")

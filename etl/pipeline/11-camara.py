@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 
 from pipeline.lib import (wait_for_neo4j, run_batches, iter_csv,
-                        IngestionRun, setup_schema, strip_doc)
+                        IngestionRun, apply_schema, setup_schema, strip_doc)
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,6 @@ Q_INDEXES = [
     "CREATE INDEX despesa_ano         IF NOT EXISTS FOR (d:Despesa) ON (d.ano)",
     "CREATE INDEX despesa_mes         IF NOT EXISTS FOR (d:Despesa) ON (d.mes)",
     "CREATE INDEX despesa_tipo        IF NOT EXISTS FOR (d:Despesa) ON (d.tipo_despesa)",
-    "CREATE INDEX parlamentar_id_camara IF NOT EXISTS FOR (p:Parlamentar) ON (p.id_camara)",
 ]
 
 
@@ -211,8 +210,7 @@ def run(
 
     with driver.session() as session:
         log.info("  Constraints e índices...")
-        for q in Q_CONSTRAINTS + Q_INDEXES:
-            session.run(q)
+        apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
     with IngestionRun(driver, "camara"):
         log.info("  [1/1] Parlamentar + Despesa → GASTOU, FORNECEU...")

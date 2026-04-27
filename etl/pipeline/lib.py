@@ -13,6 +13,7 @@ import hashlib
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -119,15 +120,11 @@ _SCHEMA_QUERIES = [
     "CREATE INDEX partner_doc_partial    IF NOT EXISTS FOR (p:Partner) ON (p.doc_partial)",
     "CREATE INDEX partner_nome_doc       IF NOT EXISTS FOR (p:Partner) ON (p.nome, p.doc_partial)",
     # Índices base para endpoints da API (lookup + filtros frequentes)
-    "CREATE INDEX api_pessoa_cpf         IF NOT EXISTS FOR (p:Pessoa) ON (p.cpf)",
     "CREATE INDEX api_pessoa_nome        IF NOT EXISTS FOR (p:Pessoa) ON (p.nome)",
-    "CREATE INDEX api_empresa_cnpj_basico IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj_basico)",
     "CREATE INDEX api_empresa_cnpj       IF NOT EXISTS FOR (e:Empresa) ON (e.cnpj)",
     "CREATE INDEX api_empresa_uf         IF NOT EXISTS FOR (e:Empresa) ON (e.uf)",
     "CREATE INDEX api_parlamentar_id     IF NOT EXISTS FOR (p:Parlamentar) ON (p.id)",
-    "CREATE INDEX api_parlamentar_id_camara IF NOT EXISTS FOR (p:Parlamentar) ON (p.id_camara)",
     "CREATE INDEX api_parlamentar_cpf    IF NOT EXISTS FOR (p:Parlamentar) ON (p.cpf)",
-    "CREATE INDEX api_parlamentar_codigo_autor IF NOT EXISTS FOR (p:Parlamentar) ON (p.codigo_autor)",
     "CREATE INDEX api_parlamentar_nome_autor IF NOT EXISTS FOR (p:Parlamentar) ON (p.nome_autor)",
     "CREATE INDEX api_municipio_uf       IF NOT EXISTS FOR (m:Municipio) ON (m.uf)",
     "CREATE INDEX api_municipio_sigla_uf IF NOT EXISTS FOR (m:Municipio) ON (m.sigla_uf)",
@@ -146,6 +143,69 @@ ON EACH [n.nome, n.razao_social, n.cpf, n.cnpj, n.doc_partial, n.nome_urna,
          n.nome_autor, n.objeto, n.codigo_emenda, n.numero_contrato,
          n.motivo_sancao, n.nome_favorecido]
 """
+
+_UNIQUE_CONSTRAINT_RE = re.compile(
+    r"FOR\s*\(\w+:([A-Za-z0-9_]+)\)\s*REQUIRE\s+\w+\.([A-Za-z0-9_]+)\s+IS UNIQUE",
+    re.IGNORECASE,
+)
+
+_INDEX_RE = re.compile(
+    r"FOR\s*\(\w+:([A-Za-z0-9_]+)\)\s*ON\s*\(\w+\.([A-Za-z0-9_]+)\)",
+    re.IGNORECASE,
+)
+
+
+def _extract_constraint_target(query: str) -> tuple[str, str] | None:
+    match = _UNIQUE_CONSTRAINT_RE.search(query)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
+def _extract_index_target(query: str) -> tuple[str, str] | None:
+    match = _INDEX_RE.search(query)
+    if not match:
+        return None
+    return match.group(1), match.group(2)
+
+
+def _quote_identifier(name: str) -> str:
+    return "`" + name.replace("`", "``") + "`"
+
+
+def apply_schema(session, constraints: list[str] | tuple[str, ...], indexes: list[str] | tuple[str, ...] = ()) -> None:
+    """Aplica constraints/indices e remove indices simples que bloqueiam UNIQUE constraints."""
+    constraint_targets = {target for q in constraints if (target := _extract_constraint_target(q))}
+
+    if constraint_targets:
+        existing_indexes = session.run(
+            """
+            SHOW INDEXES
+            YIELD name, labelsOrTypes, properties, owningConstraint
+            RETURN name, labelsOrTypes, properties, owningConstraint
+            """
+        ).data()
+
+        for idx in existing_indexes:
+            labels = tuple(idx.get("labelsOrTypes") or [])
+            props = tuple(idx.get("properties") or [])
+            if idx.get("owningConstraint") or len(labels) != 1 or len(props) != 1:
+                continue
+            if (labels[0], props[0]) in constraint_targets:
+                log.warning(
+                    f"  Removendo indice conflitante {idx['name']} em :{labels[0]}({props[0]}) para criar constraint UNIQUE"
+                )
+                session.run(f"DROP INDEX {_quote_identifier(idx['name'])}")
+
+    for q in constraints:
+        session.run(q)
+
+    for q in indexes:
+        target = _extract_index_target(q)
+        if target and target in constraint_targets:
+            log.info(f"  Pulando indice redundante em :{target[0]}({target[1]})")
+            continue
+        session.run(q)
 
 
 def setup_schema(driver) -> None:

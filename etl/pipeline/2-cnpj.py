@@ -27,7 +27,7 @@ from datetime import datetime
 from pathlib import Path
 import random
 from neo4j import GraphDatabase
-from pipeline.lib import classify_doc, make_partner_id, IngestionRun, setup_schema
+from pipeline.lib import classify_doc, make_partner_id, IngestionRun, apply_schema, setup_schema
 log = logging.getLogger(__name__)
 DATA_DIR     = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "cnpj"
 CHUNK_SIZE   = int(os.environ.get("CHUNK_SIZE",  "50000"))  # linhas lidas do CSV por vez
@@ -567,8 +567,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
     # ── constraints + índices + fulltext (antes da carga) ─────────────────────
     with driver.session() as session:
         log.info("  Constraints e índices...")
-        for q in Q_CONSTRAINTS + Q_INDEXES:
-            session.run(q)
+        apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
     setup_schema(driver)
 
     with IngestionRun(driver, "cnpj") as run_ctx:
