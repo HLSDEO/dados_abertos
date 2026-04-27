@@ -1,24 +1,24 @@
 const API_BASE = "/api";
 
 const DATA_SOURCES = [
-  ["ibge", "IBGE Localidades"],
-  ["cnpj", "CNPJ / Receita Federal"],
-  ["tse", "TSE Candidatos"],
-  ["emendas_cgu", "Emendas CGU"],
-  ["servidores_cgu", "Servidores CGU"],
-  ["sancoes_cgu", "Sancoes CGU"],
-  ["pncp", "PNCP Contratos"],
-  ["pgfn", "PGFN Divida Ativa"],
-  ["camara", "Camara CEAP"],
-  ["bndes", "BNDES Emprestimos"],
-  ["senado", "Senado CEAP"],
+  ["ibge", "IBGE Localidades", "📍"],
+  ["cnpj", "CNPJ / Receita Federal", "🏢"],
+  ["tse", "TSE Candidatos", "🗳️"],
+  ["emendas_cgu", "Emendas CGU", "📋"],
+  ["servidores_cgu", "Servidores CGU", "👔"],
+  ["sancoes_cgu", "Sanções CGU", "⛔"],
+  ["pncp", "PNCP Contratos", "📄"],
+  ["pgfn", "PGFN Dívida Ativa", "💸"],
+  ["camara", "Câmara CEAP", "🏛️"],
+  ["bndes", "BNDES Empréstimos", "🏦"],
+  ["senado", "Senado CEAP", "🏛️"],
 ];
 
 const NAV_ITEMS = [
-  { key: "busca", label: "Busca avancada", href: "/index.html" },
-  { key: "grafo", label: "Explorador de grafo", href: "/grafo.html" },
-  { key: "corrupcao", label: "Padroes de corrupcao", href: "/corrupcao.html" },
-  { key: "pipelines", label: "Status dos pipeline", href: "/pipelines.html" },
+  { key: "busca", label: "Busca avançada", href: "/index.html", icon: "🔍" },
+  { key: "grafo", label: "Explorador de grafo", href: "/grafo.html", icon: "🕸️" },
+  { key: "corrupcao", label: "Padrões de corrupção", href: "/corrupcao.html", icon: "⚠️" },
+  { key: "pipelines", label: "Status dos pipeline", href: "/pipelines.html", icon: "📡" },
 ];
 
 const LABEL_COLORS = {
@@ -99,7 +99,7 @@ function buildShell(pageKey) {
       <aside class="sidebar">
         <div class="logo">
           <a href="/index.html">
-            <div class="logo-mark">DAB<span>ERTO</span></div>
+            <div class="logo-mark">D<span>ABERTO</span></div>
             <div class="logo-sub">Inteligencia Civica</div>
           </a>
         </div>
@@ -108,14 +108,16 @@ function buildShell(pageKey) {
             <div class="nav-label">Navegacao</div>
             ${NAV_ITEMS.map((item) => `
               <a class="nav-item ${item.key === pageKey ? "active" : ""}" href="${item.href}">
+                <span>${item.icon}</span>
                 <span>${item.label}</span>
               </a>
             `).join("")}
           </section>
           <section class="nav-section">
             <div class="nav-label">Bases de dados</div>
-            ${DATA_SOURCES.map(([key, label]) => `
+            ${DATA_SOURCES.map(([key, label, icon]) => `
               <div class="nav-item data-source">
+                <span>${icon}</span>
                 <span>${label}</span>
               </div>
             `).join("")}
