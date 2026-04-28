@@ -93,6 +93,11 @@ _NODE_LABELS_CORE = [
     "Sancao",
 ]
 
+_NODE_LABELS_TINY = [
+    "Empresa",
+    "Sancao",
+]
+
 _RELATIONSHIPS_FULL = {
     "SOCIO_DE": {"orientation": "NATURAL"},
     "LOCALIZADA_EM": {"orientation": "NATURAL"},
@@ -144,6 +149,10 @@ _RELATIONSHIPS_CORE = {
     "LOCALIZADA_EM": {"orientation": "NATURAL"},
     "POSSUI_SANCAO": {"orientation": "NATURAL"},
     "MESMO_QUE": {"orientation": "UNDIRECTED"},
+}
+
+_RELATIONSHIPS_TINY = {
+    "POSSUI_SANCAO": {"orientation": "NATURAL"},
 }
 
 
@@ -258,13 +267,15 @@ def _projection_config():
         return _NODE_LABELS_LEAN, _RELATIONSHIPS_LEAN
     if _GDS_PROFILE == "core":
         return _NODE_LABELS_CORE, _RELATIONSHIPS_CORE
+    if _GDS_PROFILE == "tiny":
+        return _NODE_LABELS_TINY, _RELATIONSHIPS_TINY
     return _NODE_LABELS_FULL, _RELATIONSHIPS_FULL
 
 
 def _candidate_profiles():
-    if _GDS_PROFILE in {"full", "lean", "core"}:
+    if _GDS_PROFILE in {"full", "lean", "core", "tiny"}:
         return [_GDS_PROFILE]
-    return ["full", "lean", "core"]
+    return ["full", "lean", "core", "tiny"]
 
 
 def _parse_required_memory_gib(required_memory: str) -> float:
@@ -302,6 +313,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
                 "full": (_NODE_LABELS_FULL, _RELATIONSHIPS_FULL),
                 "lean": (_NODE_LABELS_LEAN, _RELATIONSHIPS_LEAN),
                 "core": (_NODE_LABELS_CORE, _RELATIONSHIPS_CORE),
+                "tiny": (_NODE_LABELS_TINY, _RELATIONSHIPS_TINY),
             }
             log.info(
                 f"  Perfil GDS solicitado: {_GDS_PROFILE} "
