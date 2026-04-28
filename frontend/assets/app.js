@@ -168,7 +168,7 @@ function mountSearchPage() {
     ${renderHeader({
       label: "Busca avancada",
       title: "Pesquisa operacional no grafo",
-      subtitle: "Use a base visual do design que voce gostou, mas com uma tela pratica para localizar pessoas, empresas, parlamentares e outros nos do grafo.",
+      subtitle: "Localize pessoas, empresas, parlamentares e outros nós do grafo, ainda que por similaridade.",
     })}
     <section class="card">
       <div class="toolbar">
@@ -817,7 +817,7 @@ function mountProfilePage(cytoscape) {
     ${renderHeader({
       label: "Perfil",
       title: "Detalhamento da entidade",
-      subtitle: "Aqui juntamos os dados do perfil e o grafo expandivel num fluxo mais limpo que o prototipo original.",
+      subtitle: "Dados da entidade selecionada de forma mais simples e textual.",
     })}
     <div id="profile-root" class="stack">
       <div class="loading-state">Carregando perfil...</div>
