@@ -49,6 +49,7 @@ def _get_splink_settings() -> dict:
 
     creator = SettingsCreator(
         link_type="dedupe_only",
+        unique_id_column_name="unique_id",
         comparisons=[
             cl.JaroWinklerAtThresholds("nome", score_threshold_or_thresholds=[0.9, 0.8]),
             cl.ExactMatch("cpf"),
@@ -99,6 +100,9 @@ def _load_pessoas(driver) -> "pd.DataFrame":
         )
         rows = [dict(r) for r in result]
     df = pd.DataFrame(rows)
+    if not df.empty:
+        # Splink requer identificador único por linha para gerar pares.
+        df["unique_id"] = df.index.astype("int64")
     log.info(f"  {len(df):,} pessoas carregadas  colunas={list(df.columns)}")
     return df
 
