@@ -55,11 +55,15 @@ def get_pessoa(
         candidaturas = run_query(
             s,
             """
-            MATCH (p:Pessoa {cpf: $cpf})-[c:CANDIDATO_EM]->(el:Eleicao)
-            RETURN el.ano AS ano, el.cargo AS cargo, el.uf AS uf,
-                   c.situacao AS situacao, c.nome_urna AS nome_urna,
-                   c.partido AS partido
-            ORDER BY el.ano DESC
+            MATCH (p:Pessoa {cpf: $cpf})-[c:CANDIDATO_EM]->(e:Eleicao)
+            OPTIONAL MATCH (p)-[f:FILIADA_A {ano: e.ano}]->(part:Partido)
+            RETURN e.ano AS ano,
+                   c.ds_cargo AS cargo,
+                   e.sg_uf AS uf,
+                   c.ds_situacao AS situacao,
+                   c.nm_urna AS nome_urna,
+                   part.sigla AS partido
+            ORDER BY e.ano DESC
             SKIP $offset
             LIMIT $limit
             """,

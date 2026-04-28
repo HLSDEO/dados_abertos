@@ -921,21 +921,22 @@ function renderPrimaryDetails(tipo, payload) {
 
 function renderSimpleTable(columns, rows) {
   if (!rows || !rows.length) {
-    return `<div class="empty-state">Sem registros nessa secao.</div>`;
+    return `<div class="empty-state">Sem registros nessa seção.</div>`;
+  } else {
+    return `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>${columns.map((column) => `<td>${column.render ? column.render(row[column.key], row) : (row[column.key] ?? "-")}</td>`).join("")}</tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
   }
 
-  return `
-    <div class="table-wrap">
-      <table>
-        <thead><tr>${columns.map((column) => `<th>${column.label}</th>`).join("")}</tr></thead>
-        <tbody>
-          ${rows.map((row) => `
-            <tr>${columns.map((column) => `<td>${column.render ? column.render(row[column.key], row) : (row[column.key] ?? "-")}</td>`).join("")}</tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
 }
 
 function renderEmpresaSections(payload) {
