@@ -26,7 +26,7 @@ import requests
 log = logging.getLogger(__name__)
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "senado"
-BASE_URL = "https://adm.senado.gov.br/adm-dados-abertos/api"
+BASE_URL = "https://adm.senado.gov.br/adm-dadosabertos/api/v1"
 ANO_INICIO = 2008
 ANO_FIM    = datetime.now().year
 
@@ -40,15 +40,13 @@ FONTE = {
 
 def _download_ano(ano: int, retries: int = 3) -> dict | None:
     """Baixa despesas de um ano via API REST."""
-    url = f"{BASE_URL}/Senadores/buscarDespesasCeapsPorAno"
-    params = {"ano": ano}
+    url = f"{BASE_URL}/senadores/despesas_ceaps/{ano}/csv"
 
     for attempt in range(1, retries + 1):
         try:
-            log.info(f"    GET {url}?ano={ano}  ({attempt}/{retries})")
+            log.info(f"    GET {url}  ({attempt}/{retries})")
             r = requests.get(
                 url,
-                params=params,
                 timeout=120,
                 headers={"User-Agent": "dados-abertos-etl/1.0"},
                 allow_redirects=True,
@@ -74,6 +72,7 @@ def _process_ano(data: dict, ano: int, out_path: Path) -> int:
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     coletado = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    url = f"{BASE_URL}/senadores/despesas_ceaps/{ano}/csv"
 
     # Adiciona metadados
     wrapped = {
@@ -81,7 +80,7 @@ def _process_ano(data: dict, ano: int, out_path: Path) -> int:
             **FONTE,
             "ano":        ano,
             "coletado_em": coletado,
-            "fonte_url_origem": f"{BASE_URL}/Senadores/buscarDespesasCeapsPorAno?ano={ano}",
+            "fonte_url_origem": url,
         },
         "data": data,
     }
