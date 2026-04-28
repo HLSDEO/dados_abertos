@@ -100,12 +100,12 @@ function buildShell(pageKey) {
         <div class="logo">
           <a href="/index.html">
             <div class="logo-mark">D<span>ABERTO</span></div>
-            <div class="logo-sub">Inteligencia Civica</div>
+            <div class="logo-sub">Inteligência Cívica</div>
           </a>
         </div>
         <nav class="nav">
           <section class="nav-section">
-            <div class="nav-label">Navegacao</div>
+            <div class="nav-label">Navegação</div>
             ${NAV_ITEMS.map((item) => `
               <a class="nav-item ${item.key === pageKey ? "active" : ""}" href="${item.href}">
                 <span>${item.icon}</span>
