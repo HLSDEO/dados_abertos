@@ -424,7 +424,7 @@ function mountGraphPage(cytoscape) {
         id: node.uid,
         uid: node.uid,
         label: node.label,
-        name: node.nome || node.razao_social || node.uid,
+        name: node.nome || node.razao_social || node.label || node.uid,
         color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
         val: 5,
       })),
