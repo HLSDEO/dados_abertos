@@ -259,14 +259,18 @@ function makeGraphShell() {
 
 async function renderGraph2D(cytoscape, graph, onNodeTap) {
   const elements = [
-    ...graph.nodes.map((node) => ({
-      data: {
-        id: node.uid,
-        label: node.nome || node.uid,
-        nodeLabel: node.label,
-        color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
-      },
-    })),
+    ...graph.nodes.map((node) => {
+      const keyPart = node.uid ? node.uid.split(":")[1] || node.uid : node.uid;
+      const label = node.nome || node.razao_social || node.nome_autor || keyPart;
+      return {
+        data: {
+          id: node.uid,
+          label: label,
+          nodeLabel: node.label,
+          color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
+        },
+      };
+    }),
     ...graph.edges.map((edge, index) => ({
       data: {
         id: `${edge.source}-${edge.target}-${edge.type}-${index}`,
@@ -308,16 +312,21 @@ async function renderGraph2D(cytoscape, graph, onNodeTap) {
           "border-color": "#081017",
         },
       },
-      {
-        selector: "edge",
-        style: {
-          width: 1.5,
-          "line-color": "#4b5563",
-          "curve-style": "bezier",
-          "target-arrow-shape": "triangle",
-          "target-arrow-color": "#4b5563",
-        },
-      },
+       {
+         selector: "edge",
+         style: {
+           width: 1.5,
+           "line-color": "#4b5563",
+           "curve-style": "bezier",
+           "target-arrow-shape": "triangle",
+           "target-arrow-color": "#4b5563",
+           label: "data(edgeLabel)",
+           "font-size": 8,
+           "text-rotation": "autorotate",
+           "text-margin-y": -3,
+           color: "#9ca3af",
+         },
+       },
     ],
   });
 
