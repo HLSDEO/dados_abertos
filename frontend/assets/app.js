@@ -825,7 +825,7 @@ function mountProfilePage(cytoscape) {
   `;
 
   if (!tipo || !id) {
-    $("#profile-root").innerHTML = `<div class="error-state">Parametros tipo e id sao obrigatorios.</div>`;
+    $("#profile-root").innerHTML = `<div class="error-state">Parâmetros tipo e id são obrigatórios.</div>`;
     return;
   }
 
@@ -837,7 +837,7 @@ function mountProfilePage(cytoscape) {
 
   const endpoint = endpointMap[tipo];
   if (!endpoint) {
-    $("#profile-root").innerHTML = `<div class="error-state">Tipo ${tipo} ainda nao tem tela estruturada.</div>`;
+    $("#profile-root").innerHTML = `<div class="error-state">Tipo ${tipo} ainda não tem tela estruturada.</div>`;
     return;
   }
 
