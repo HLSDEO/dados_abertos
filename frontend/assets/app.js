@@ -333,7 +333,7 @@ async function renderGraph2D(cytoscape, graph, onNodeTap) {
   cy.on("tap", "node", (event) => {
     const id = event.target.id();
     const [label, rawId] = id.split(":");
-    if (label && rawId) onNodeTap(label, rawId, event.target.data());
+    if (label && rawId) onNodeTap(label, rawId, event.target.data(), event);
   });
 
   return cy;
@@ -886,11 +886,198 @@ function mountProfilePage(cytoscape) {
         sections.innerHTML = renderParlamentarSections(payload);
       }
 
+      // ── Popup de nó ──────────────────────────────────────────────────────
+      if (!document.getElementById("node-popup")) {
+        const popupEl = document.createElement("div");
+        popupEl.id = "node-popup";
+        popupEl.innerHTML = `
+          <button id="node-popup-close" title="Fechar">✕</button>
+          <div id="node-popup-body"></div>
+        `;
+        document.body.appendChild(popupEl);
+
+        if (!document.getElementById("node-popup-style")) {
+          const style = document.createElement("style");
+          style.id = "node-popup-style";
+          style.textContent = `
+            #node-popup {
+              display: none;
+              position: fixed;
+              z-index: 9999;
+              min-width: 260px;
+              max-width: 340px;
+              background: #0f1923;
+              border: 1px solid #1e3044;
+              border-radius: 10px;
+              box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+              padding: 18px 18px 14px 18px;
+              font-family: inherit;
+              pointer-events: auto;
+            }
+            #node-popup.visible { display: block; }
+            #node-popup-close {
+              position: absolute;
+              top: 10px; right: 12px;
+              background: none;
+              border: none;
+              color: #64748b;
+              font-size: 14px;
+              cursor: pointer;
+              line-height: 1;
+              padding: 2px 6px;
+              border-radius: 4px;
+              transition: color .15s;
+            }
+            #node-popup-close:hover { color: #e2e8f0; }
+            #node-popup-body .popup-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+            #node-popup-body .popup-title { font-size: 15px; font-weight: 700; color: #e2e8f0; line-height: 1.35; margin-bottom: 10px; }
+            #node-popup-body .popup-rows { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+            #node-popup-body .popup-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+            #node-popup-body .popup-row-key { color: #64748b; white-space: nowrap; }
+            #node-popup-body .popup-row-val { color: #cbd5e1; text-align: right; font-family: monospace; word-break: break-all; }
+            #node-popup-body .popup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+            #node-popup-body .popup-btn {
+              display: inline-block;
+              font-size: 12px;
+              font-weight: 600;
+              padding: 5px 13px;
+              border-radius: 6px;
+              text-decoration: none;
+              cursor: pointer;
+              transition: opacity .15s;
+            }
+            #node-popup-body .popup-btn:hover { opacity: .8; }
+            #node-popup-body .popup-btn-primary { background: #00ff94; color: #0a1628; }
+            #node-popup-body .popup-btn-secondary { background: #1e3044; color: #94a3b8; }
+            #node-popup-body .popup-loading { color: #64748b; font-size: 13px; }
+          `;
+          document.head.appendChild(style);
+        }
+
+        document.getElementById("node-popup-close").addEventListener("click", () => {
+          document.getElementById("node-popup").classList.remove("visible");
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") document.getElementById("node-popup")?.classList.remove("visible");
+        });
+      }
+
+      function showNodePopup(nodeLabel, nodeId, nodeData, cyEvent) {
+        const popup = document.getElementById("node-popup");
+        const body = document.getElementById("node-popup-body");
+        const color = LABEL_COLORS[nodeLabel] || LABEL_COLORS.default;
+
+        body.innerHTML = `
+          <div class="popup-label" style="color:${color}">${nodeLabel}</div>
+          <div class="popup-title">${nodeData.label || nodeId}</div>
+          <div class="popup-loading">Carregando dados…</div>
+        `;
+        popup.classList.add("visible");
+
+        // Posiciona perto do clique (mas não sai da tela)
+        const vw = window.innerWidth, vh = window.innerHeight;
+        let x = (cyEvent?.originalEvent?.clientX ?? vw / 2) + 14;
+        let y = (cyEvent?.originalEvent?.clientY ?? vh / 2) - 20;
+        if (x + 360 > vw) x = vw - 360;
+        if (y + 360 > vh) y = vh - 360;
+        if (y < 10) y = 10;
+        popup.style.left = x + "px";
+        popup.style.top = y + "px";
+
+        // Busca dados da entidade na API, se houver endpoint
+        const endpointMap = {
+          Pessoa: `/pessoa/${encodeURIComponent(nodeId)}`,
+          Empresa: `/empresa/${encodeURIComponent(nodeId)}`,
+          Parlamentar: `/parlamentar/${encodeURIComponent(nodeId)}`,
+        };
+        const ep = endpointMap[nodeLabel];
+
+        const profileUrl = buildProfileUrl(nodeLabel, nodeId);
+        const grafUrl = `/grafo.html?label=${encodeURIComponent(nodeLabel)}&id=${encodeURIComponent(nodeId)}&hops=1`;
+
+        if (!ep) {
+          // Nós sem endpoint dedicado (Municipio, Estado, Emenda, Sancao, etc.)
+          body.innerHTML = `
+            <div class="popup-label" style="color:${color}">${nodeLabel}</div>
+            <div class="popup-title">${nodeData.label || nodeId}</div>
+            <div class="popup-rows">
+              <div class="popup-row"><span class="popup-row-key">ID</span><span class="popup-row-val">${nodeId}</span></div>
+            </div>
+            <div class="popup-actions">
+              <a class="popup-btn popup-btn-secondary" href="${grafUrl}">Ver no grafo</a>
+            </div>
+          `;
+          return;
+        }
+
+        apiFetch(ep).then((payload) => {
+          let rows = [];
+          let titleText = nodeData.label || nodeId;
+          let actions = `
+            <a class="popup-btn popup-btn-primary" href="${profileUrl}">Ver perfil</a>
+            <a class="popup-btn popup-btn-secondary" href="${grafUrl}">Ver no grafo</a>
+          `;
+
+          if (nodeLabel === "Pessoa") {
+            const p = payload.pessoa || {};
+            titleText = p.nome || titleText;
+            rows = [
+              ["CPF", maskCPF(p.cpf || nodeId)],
+              ["Nascimento", fmtDate(p.dt_nascimento)],
+              ["Sociedades", payload.socios?.length ?? "-"],
+              ["Candidaturas", payload.candidaturas?.length ?? "-"],
+              ["Parl. vinculado", payload.parlamentar?.nome_parlamentar || "-"],
+            ];
+          } else if (nodeLabel === "Empresa") {
+            const e = payload.empresa || {};
+            titleText = e.razao_social || titleText;
+            rows = [
+              ["CNPJ", maskCNPJ(e.cnpj_basico || nodeId)],
+              ["UF", e.uf || "-"],
+              ["Situação", e.situacao_cadastral || "-"],
+              ["Sócios PF", payload.socios_pf?.length ?? "-"],
+              ["Contratos", payload.contratos?.length ?? "-"],
+              ["Sanções", payload.sancoes?.length ?? "-"],
+            ];
+            actions += `<a class="popup-btn popup-btn-secondary" href="/corrupcao.html?cnpj=${encodeURIComponent(nodeId)}" style="margin-top:4px;">Padrões de risco</a>`;
+          } else if (nodeLabel === "Parlamentar") {
+            const parl = payload.parlamentar || {};
+            titleText = parl.nome_autor || titleText;
+            rows = [
+              ["CPF", maskCPF(parl.cpf)],
+              ["Partido", parl.sigla_partido || parl.partido || "-"],
+              ["UF", parl.uf || "-"],
+              ["Emendas", payload.emendas?.length ?? "-"],
+              ["Doadores", payload.doadores?.length ?? "-"],
+            ];
+          }
+
+          body.innerHTML = `
+            <div class="popup-label" style="color:${color}">${nodeLabel}</div>
+            <div class="popup-title">${titleText}</div>
+            <div class="popup-rows">
+              ${rows.filter(([, v]) => v !== "-" && v !== null && v !== undefined)
+                .map(([k, v]) => `<div class="popup-row"><span class="popup-row-key">${k}</span><span class="popup-row-val">${v}</span></div>`)
+                .join("")}
+            </div>
+            <div class="popup-actions">${actions}</div>
+          `;
+        }).catch(() => {
+          body.innerHTML += `<div style="color:#ff6b35;font-size:12px;margin-top:8px;">Não foi possível carregar dados detalhados.</div>`;
+          body.querySelector(".popup-loading")?.remove();
+          body.innerHTML += `<div class="popup-actions"><a class="popup-btn popup-btn-primary" href="${profileUrl}">Ver perfil</a></div>`;
+        });
+      }
+
+      // ── Fim popup ─────────────────────────────────────────────────────────
+
       const graph = await apiFetch(`/graph/expand?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1&max_nodes=100`);
-      await renderGraph2D(cytoscape, graph, async (nextLabel, nextId, data) => {
-        $("#graph-meta").textContent = `${data.label} selecionado. Abra o perfil dedicado para aprofundar.`;
+      await renderGraph2D(cytoscape, graph, async (nextLabel, nextId, data, cyEvent) => {
+        showNodePopup(nextLabel, nextId, data, cyEvent);
+        $("#graph-meta").textContent = `${data.label} selecionado.`;
       });
-      $("#graph-meta").textContent = `${graph.nodes.length} nos e ${graph.edges.length} arestas carregados.`;
+      $("#graph-meta").textContent = `${graph.nodes.length} nos e ${graph.edges.length} arestas carregados. Clique em um nó para ver detalhes.`;
     } catch (error) {
       $("#profile-root").innerHTML = `<div class="error-state">${error.message}</div>`;
     }
