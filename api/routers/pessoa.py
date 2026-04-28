@@ -96,7 +96,7 @@ def get_pessoa(
         ).data()
 
         # Busca parlamentar vinculado (pode ser a mesma pessoa se for senador/deputado)
-        # Estratégias: 1) MESMO_QUE, 2) CPF direto, 3) Título eleitoral, 4) Nome similar
+        # Estratégias: 1) MESMO_QUE, 2) CPF direto, 3) Título eleitoral, 4) Nome similar via token intersection
         parlamentar = run_query(
             s,
             """
@@ -139,9 +139,14 @@ def get_pessoa(
                 """
                 MATCH (p:Pessoa {cpf: $cpf})
                 MATCH (par:Parlamentar)
-                WHERE toLower(par.nome_autor) CONTAINS toLower(p.nome) OR toLower(p.nome) CONTAINS toLower(par.nome_autor)
+                WITH p, par, size(apoc.coll.intersection(
+                  [w IN split(toLower(p.nome), ' ') WHERE w > ''],
+                  [w IN split(toLower(par.nome_autor), ' ') WHERE w > '']
+                )) AS common
+                WHERE common >= 1
                 RETURN par.codigo_autor AS parlamentar_id,
                        par.nome_autor AS nome_parlamentar
+                ORDER BY common DESC
                 LIMIT 1
                 """,
                 cpf=cpf,
