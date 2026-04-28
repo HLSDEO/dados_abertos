@@ -576,7 +576,6 @@ if __name__ == "__main__":
     generate_sancoes_cgu_data() #sancoes_cgu
     generate_pncp_data() #pncp
     generate_pgfn_data() #pgfn
-    generate_pgfn_data() #pgfn
     generate_camara_data() #camara
     generate_bndes_data() #bndes
     generate_senado_data() #senado
