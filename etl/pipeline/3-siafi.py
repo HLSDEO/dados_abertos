@@ -283,7 +283,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
         with driver.session() as session:
             run_batches(session, Q_UASG, rows)
         log.info(f"    ✓ {len(rows):,} unidades gestoras")
-        run_ctx.add(len(rows))
+        run_ctx.add(rows_in=len(rows), rows_out=len(rows))
 
         rows_estaduais = [r for r in rows if r.get("nome_estado")]
         if rows_estaduais:

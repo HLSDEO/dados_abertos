@@ -567,7 +567,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         log.info("  Constraints e índices...")
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
-    with IngestionRun(driver, "tse"):
+    with IngestionRun(driver, "tse") as run_ctx:
         cand_dir = DATA_DIR / "candidatos"
         doac_dir = DATA_DIR / "doacoes"
         bens_dir = DATA_DIR / "bens"
@@ -577,6 +577,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         _load_candidatos(driver, cand_dir, eleicoes, limite, stats)
         if limite is not None and stats['total'] >= limite:
             log.info(f"  Limite de {limite:,} linhas atingido após candidatos. Parando.")
+            run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
             driver.close()
             return
 
@@ -587,11 +588,14 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         _load_doacoes(driver, doac_dir, sq_cpf, eleicoes, limite, stats)
         if limite is not None and stats['total'] >= limite:
             log.info(f"  Limite de {limite:,} linhas atingido após doacoes. Parando.")
+            run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
             driver.close()
             return
 
         log.info("  [3/3] Bens declarados → BemDeclarado, DECLAROU_BEM...")
         _load_bens(driver, bens_dir, sq_cpf, eleicoes, limite, stats)
+
+        run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
         log.info("  Linkando municípios TSE → IBGE...")
         with driver.session() as session:

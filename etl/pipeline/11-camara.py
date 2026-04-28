@@ -212,10 +212,11 @@ def run(
         log.info("  Constraints e índices...")
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
-    with IngestionRun(driver, "camara"):
+    with IngestionRun(driver, "camara") as run_ctx:
         log.info("  [1/1] Parlamentar + Despesa → GASTOU, FORNECEU...")
         stats = {'total': 0}
         _load_despesas(driver, limite, stats, anos)
+        run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
     driver.close()
     log.info("[camara] Pipeline concluído")

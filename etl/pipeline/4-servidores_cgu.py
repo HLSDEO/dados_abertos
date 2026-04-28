@@ -291,7 +291,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
             if cad_path.exists():
                 log.info("  [cadastro]...")
                 n = _load_cadastro(driver, cad_path, limite, stats)
-                run_ctx.add(n)
+                run_ctx.add(rows_in=n, rows_out=n)
                 log.info(f"    ✓ {n:,} servidores")
                 if limite is not None and stats['total'] >= limite:
                     log.info(f"    Limite de {limite:,} atingido após cadastro. Parando.")
@@ -300,7 +300,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
             if rem_path.exists() and (limite is None or stats['total'] < limite):
                 log.info("  [remuneracao]...")
                 n = _load_remuneracao(driver, rem_path, limite, stats)
-                run_ctx.add(n)
+                run_ctx.add(rows_in=n, rows_out=n)
                 log.info(f"    ✓ {n:,} registros")
 
     driver.close()

@@ -581,7 +581,6 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
                 log.info(f"  Limite de {limite:,} linhas atingido após empresas. Parando.")
                 break
             log.info(f"  [2-4] Simples + Estabelecimentos + Sócios (paralelo, workers={WORKERS})...")
-            total_socios = 0
             with ThreadPoolExecutor(max_workers=WORKERS) as pool:
                 futures = {
                     pool.submit(_load_simples,          driver, csv_dir,        snapshot, limite, stats): "simples",
@@ -590,14 +589,11 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, history: bool = Fa
                 }
                 for future in as_completed(futures):
                     name = futures[future]
-                    result = future.result()   # propaga exceção imediatamente
-                    if name == "socios":
-                        total_socios = result
+                    future.result()   # propaga exceção imediatamente
                     if limite is not None and stats['total'] >= limite:
                         log.info(f"  Limite de {limite:,} atingido durante {name}. Cancelando tarefas restantes...")
-                        # Não cancela futuras, mas o próximo ciclo vai parar
                         break
-            run_ctx.add(rows_out=total_socios)
+            run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
             if limite is not None and stats['total'] >= limite:
                 log.info(f"  Limite de {limite:,} linhas atingido após snapshot {snapshot}. Parando.")
                 break

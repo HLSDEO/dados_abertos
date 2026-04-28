@@ -621,7 +621,7 @@ def run(
     driver = wait_for_neo4j(neo4j_uri, neo4j_user, neo4j_password)
 
     try:
-        with IngestionRun(driver, "pncp-csv"):
+        with IngestionRun(driver, "pncp-csv") as run_ctx:
             with driver.session() as session:
                 log.info("  Aplicando schema (constraints + indices)...")
                 try:
@@ -644,6 +644,7 @@ def run(
                 if limite is not None and stats['total'] >= limite:
                     log.info(f"  Limite de {limite:,} linhas atingido após {etapa}. Parando.")
                     break
+            run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
         log.info("[PNCP-CSV] Pipeline concluído com sucesso")
 

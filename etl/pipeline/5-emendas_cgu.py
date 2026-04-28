@@ -575,7 +575,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
     def _atingiu(stats_local):
         return limite is not None and stats_local['total'] >= limite
 
-    with IngestionRun(driver, "emendas_cgu"):
+    with IngestionRun(driver, "emendas_cgu") as run_ctx:
         stats = {'total': 0}
         atingiu_limite = False
 
@@ -598,6 +598,8 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
             if _atingiu(stats):
                 log.info(f"  Limite de {limite:,} linhas atingido após por_favorecido. Parando.")
                 atingiu_limite = True
+
+        run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
         if not atingiu_limite:
             log.info("  [4/5] Emenda → BENEFICIOU → Empresa (agregado)...")

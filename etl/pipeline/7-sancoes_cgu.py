@@ -247,7 +247,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
         log.info("  Constraints e índices...")
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
-    with IngestionRun(driver, "sancoes_cgu"):
+    with IngestionRun(driver, "sancoes_cgu") as run_ctx:
         stats = {'total': 0}
         for dataset, tipo in [("ceis", "CEIS"), ("cnep", "CNEP")]:
             path = DATA_DIR / f"{dataset}.csv"
@@ -256,6 +256,7 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
             if limite is not None and stats['total'] >= limite:
                 log.info(f"  Limite de {limite:,} linhas atingido após {tipo}. Parando.")
                 break
+        run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
     driver.close()
     log.info("[sancoes_cgu] Pipeline concluído")

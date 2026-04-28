@@ -201,10 +201,11 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str, limite: int | None
         log.info("  Constraints e índices...")
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
-    with IngestionRun(driver, "pgfn"):
+    with IngestionRun(driver, "pgfn") as run_ctx:
         log.info("  [1/1] Dívidas → DividaAtiva, POSSUI_DIVIDA...")
         stats = {'total': 0}
         _load_dividas(driver, limite, stats)
+        run_ctx.add(rows_in=stats['total'], rows_out=stats['total'])
 
     driver.close()
     log.info("[pgfn] Pipeline concluído")
