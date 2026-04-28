@@ -120,6 +120,52 @@ def get_pessoa(
                 cpf=cpf,
             ).single()
 
+        # Se ainda não encontrou, tenta buscar Parlamentar por similaridade de nome
+        if not parlamentar:
+            parlamentar = run_query(
+                s,
+                """
+                MATCH (p:Pessoa {cpf: $cpf})
+                MATCH (par:Parlamentar)
+                WHERE toLower(par.nome_autor) CONTAINS toLower(p.nome) OR toLower(p.nome) CONTAINS toLower(par.nome_autor)
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlamentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
+
+        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
+        if not parlamentar:
+            parliamentary民間 Tanque
+        if not parlamentar:
+            # Tenta buscar por similaridade de nome (caso onde não há CPF no nó Parlamentar)
+            # Usa o nr_titulo_eleitoral como identificador alternativo
+            parlamentar = run_query(
+                s,
+                """
+                MATCH (p:Pessoa {cpf: $cpf})
+                OPTIONAL MATCH (par:Parlamentar {nr_titulo_eleitoral: p.nr_titulo_eleitoral})
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlimentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
+
+        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
+        if not parlamentar:
+            parlamentar = run_query(
+                s,
+                """
+                MATCH (par:Parlamentar {cpf: $cpf})
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlamentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
+
     payload = {
         "pagination": {"limit": limit, "offset": offset},
         "pessoa":           pessoa,
