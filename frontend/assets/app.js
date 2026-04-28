@@ -1101,9 +1101,9 @@ function renderPrimaryDetails(tipo, payload) {
     const empresa = payload.empresa || {};
     return [
       ["CNPJ", maskCNPJ(empresa.cnpj_basico)],
-      ["Razao social", empresa.razao_social || "-"],
+      ["Razão social", empresa.razao_social || "-"],
       ["UF", empresa.uf || "-"],
-      ["Situacao", empresa.situacao_cadastral || "-"],
+      ["Situação", empresa.situacao_cadastral || "-"],
     ].map(([label, value]) => `<div class="detail-item"><div class="stat-label">${label}</div><div class="detail-title">${value}</div></div>`).join("");
   }
 
