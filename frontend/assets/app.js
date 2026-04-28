@@ -349,7 +349,7 @@ function mountGraphPage(cytoscape) {
     ${renderHeader({
       label: "Explorador de grafo",
       title: "Expansão manual de relacionamentos",
-      subtitle: "Entre com a entidade raiz e navegue pelo grafo sem passar por uma landing page. A selecao aqui fica focada em operacao e leitura.",
+      subtitle: "Navegue através da entidade raiz nas demais relações e conexões.",
     })}
      <section class="card">
        <div class="toolbar">
@@ -388,11 +388,11 @@ function mountGraphPage(cytoscape) {
       <div class="card">${makeGraphShell()}</div>
       <div class="stack">
         <section class="card">
-          <div class="card-title">Selecao atual</div>
-          <div id="graph-selection" class="muted">Nenhum no selecionado.</div>
+          <div class="card-title">Seleção atual</div>
+          <div id="graph-selection" class="muted">Nenhum nó selecionado.</div>
         </section>
         <section class="card">
-          <div class="card-title">Estatisticas</div>
+          <div class="card-title">Estatísticas</div>
           <div id="graph-stats" class="pill-row"></div>
         </section>
         <section class="card">
@@ -635,14 +635,14 @@ function mountGraphPage(cytoscape) {
         currentGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(effectiveLabel)}&id=${encodeURIComponent(effectiveId)}&hops=${hops}&max_nodes=120`);
         $("#graph-selection").innerHTML = `${labelBadge(effectiveLabel)}<div style="margin-top:10px;" class="mono">${effectiveId}</div>`;
         $("#graph-stats").innerHTML = `
-          <span class="pill">${currentGraph.nodes.length} nos</span>
+          <span class="pill">${currentGraph.nodes.length} nós</span>
           <span class="pill">${currentGraph.edges.length} arestas</span>
           <span class="pill">grau raiz ${currentGraph.meta.degree}</span>
-          <span class="pill">${currentGraph.meta.is_supernode ? "limite superno ativo" : "expansao completa"}</span>
+          <span class="pill">${currentGraph.meta.is_supernode ? "Limite de super nó ativo" : "expansão completa"}</span>
         `;
 
         await redrawGraph();
-        $("#graph-meta").textContent = "Clique em um no para adicionar novas conexoes ao grafo atual.";
+        $("#graph-meta").textContent = "Clique em um nó para adicionar novas conexões ao grafo atual.";
       } catch (error) {
         $("#graph-meta").textContent = "Nao foi possivel carregar o grafo.";
         $("#graph-selection").innerHTML = `<div class="error-state">${error.message}</div>`;
@@ -667,31 +667,32 @@ function mountGraphPage(cytoscape) {
 
          const graphCanvas = $("#graph-canvas");
          
-         // Get actual canvas dimensions
+         // Get canvas element
          const canvasElement = graphCanvas.querySelector("canvas");
          if (!canvasElement) {
            throw new Error("Canvas do grafo nao encontrado");
          }
 
-         // Capture with high scale (3x) and better quality settings
-         const canvas = await window.html2canvas(graphCanvas, {
-           backgroundColor: "#090b0d",
-           scale: 3,
-           useCORS: true,
-           allowTaint: true,
-           logging: false,
-           width: graphCanvas.clientWidth,
-           height: graphCanvas.clientHeight,
-         });
-
-         const imgData = canvas.toDataURL("image/png", 1.0);
+         // Create temporary canvas with higher resolution
+         const tempCanvas = document.createElement("canvas");
+         const ctx = tempCanvas.getContext("2d");
+         const scaleFactor = 4;
+         tempCanvas.width = graphCanvas.clientWidth * scaleFactor;
+         tempCanvas.height = graphCanvas.clientHeight * scaleFactor;
          
-         // Calculate optimal PDF size
+         // Draw original canvas scaled up
+         ctx.fillStyle = "#090b0d";
+         ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+         ctx.drawImage(canvasElement, 0, 0, tempCanvas.width, tempCanvas.height);
+         
+         // Use the high-res canvas
+         const imgData = tempCanvas.toDataURL("image/png");
+         
          const pdf = new jsPDF("l", "mm", "a4");
          const pageWidth = pdf.internal.pageSize.getWidth();
          const pageHeight = pdf.internal.pageSize.getHeight();
          
-         // Add high-quality image
+         // Add image covering full page
          pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
          
          const effectiveLabel = $("#graph-label").value;
@@ -741,9 +742,9 @@ function mountGraphPage(cytoscape) {
          alert("Erro ao gerar PDF: " + error.message);
        } finally {
          btn.textContent = originalText;
-         btn.disabled = false;
-       }
-     }
+        btn.disabled = false;
+      }
+    }
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
