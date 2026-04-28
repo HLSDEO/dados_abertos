@@ -25,7 +25,7 @@ _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
                  "gds_pagerank", "gds_comunidade", "gds_betweenness",
                  "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
                  "tipo_sancao", "data_inicio", "numero_contrato", "valor_contratado_reais",
-                 "produto", "setor_bndes"]
+                 "produto", "setor_bndes", "descricao", "ds_eleicao", "tipo", "nome_urna"]
 
 
 def _serialize_node(node) -> dict:
@@ -34,9 +34,14 @@ def _serialize_node(node) -> dict:
     uid   = f"{label}:{node.get(key)}" if key and node.get(key) else f"eid:{node.element_id}"
 
     # Prioriza nome/razão social conforme o tipo de nó
-    nome = node.get("nome") or node.get("razao_social")
-    if not nome:
-        nome = node.get("nome_autor") or node.get("sigla") or ""
+    if label == "Eleicao":
+        nome = node.get("ds_eleicao") or ""
+    elif label == "BemDeclarado":
+        nome = node.get("descricao") or ""
+    else:
+        nome = node.get("nome") or node.get("razao_social")
+        if not nome:
+            nome = node.get("nome_autor") or node.get("sigla") or ""
     
     razao_social = node.get("razao_social") or ""
     cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")

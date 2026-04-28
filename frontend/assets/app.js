@@ -262,7 +262,7 @@ async function renderGraph2D(cytoscape, graph, onNodeTap) {
     ...graph.nodes.map((node) => ({
       data: {
         id: node.uid,
-        label: node.nome || node.razao_social || node.uid,
+        label: node.nome || node.uid,
         nodeLabel: node.label,
         color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
       },
@@ -419,15 +419,15 @@ function mountGraphPage(cytoscape) {
 
     destroy3D();
 
-    const graphData = {
-      nodes: (graph.nodes || []).map((node) => ({
-        id: node.uid,
-        uid: node.uid,
-        label: node.label,
-        name: node.nome || node.razao_social || node.label || node.uid,
-        color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
-        val: 5,
-      })),
+     const graphData = {
+       nodes: (graph.nodes || []).map((node) => ({
+         id: node.uid,
+         uid: node.uid,
+         label: node.label,
+         name: node.nome || node.uid,
+         color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
+         val: 5,
+       })),
       links: (graph.edges || []).map((edge, index) => ({
         id: `${edge.source}-${edge.target}-${edge.type}-${index}`,
         source: edge.source,
@@ -462,12 +462,12 @@ function mountGraphPage(cytoscape) {
           900
         );
 
-        const [label, rawId] = String(node.uid).split(":");
-        if (label && rawId) {
-          setTimeout(() => {
-            onNodeTap(label, rawId, { nodeLabel: node.label, label: node.name });
-          }, 220);
-        }
+         const [label, rawId] = String(node.uid).split(":");
+         if (label && rawId) {
+           setTimeout(() => {
+             onNodeTap(label, rawId, { nodeLabel: node.label, label: node.name });
+           }, 220);
+         }
       });
 
     if (window.SpriteText) {
@@ -521,7 +521,7 @@ function mountGraphPage(cytoscape) {
 
     const onNodeTap = async (nextLabel, nextId, data) => {
       $("#graph-selection").innerHTML = `${labelBadge(data.nodeLabel)}<div style="margin-top:10px;" class="result-title">${data.label}</div><div class="muted mono" style="margin-top:6px;">${nextId}</div>`;
-      $("#graph-meta").textContent = `Expandindo conexoes de ${data.label}...`;
+      $("#graph-meta").textContent = `Expandindo conexões de ${data.label}...`;
 
       try {
         const expanded = await apiFetch(`/graph/expand?label=${encodeURIComponent(nextLabel)}&id=${encodeURIComponent(nextId)}&hops=1&max_nodes=80`);
@@ -533,7 +533,7 @@ function mountGraphPage(cytoscape) {
           <span class="pill">expansao acumulada</span>
         `;
         await redrawGraph();
-        $("#graph-meta").textContent = `Conexoes de ${data.label} adicionadas ao grafo.`;
+        $("#graph-meta").textContent = `Conexões de ${data.label} adicionadas ao grafo.`;
       } catch (error) {
         $("#graph-meta").textContent = `Falha ao expandir ${data.label}.`;
       }
