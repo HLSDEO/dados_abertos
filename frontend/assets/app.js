@@ -195,7 +195,7 @@ function mountSearchPage() {
     </section>
     <section class="card">
       <div class="card-title">Resultados</div>
-      <div id="search-feedback" class="muted">Digite pelo menos 2 caracteres para consultar o indice fulltext.</div>
+      <div id="search-feedback" class="muted">Digite pelo menos 3 caracteres para consultar o indice fulltext.</div>
       <div id="search-results" class="results-list"></div>
     </section>
   `;
@@ -207,8 +207,8 @@ function mountSearchPage() {
     const container = $("#search-results");
     container.innerHTML = "";
 
-    if (q.length < 2) {
-      feedback.textContent = "Digite pelo menos 2 caracteres.";
+    if (q.length < 3) {
+      feedback.textContent = "Digite pelo menos 3 caracteres.";
       return;
     }
 
@@ -541,10 +541,10 @@ function mountGraphPage(cytoscape) {
         const expanded = await apiFetch(`/graph/expand?label=${encodeURIComponent(nextLabel)}&id=${encodeURIComponent(nextId)}&hops=1&max_nodes=80`);
         currentGraph = mergeGraphData(currentGraph, expanded);
         $("#graph-stats").innerHTML = `
-          <span class="pill">${currentGraph.nodes.length} nos</span>
+          <span class="pill">${currentGraph.nodes.length} nós</span>
           <span class="pill">${currentGraph.edges.length} arestas</span>
           <span class="pill">ultimo grau ${expanded.meta.degree}</span>
-          <span class="pill">expansao acumulada</span>
+          <span class="pill">expansão acumulada</span>
         `;
         await redrawGraph();
         $("#graph-meta").textContent = `Conexões de ${data.label} adicionadas ao grafo.`;
@@ -1077,7 +1077,7 @@ function mountProfilePage(cytoscape) {
         showNodePopup(nextLabel, nextId, data, cyEvent);
         $("#graph-meta").textContent = `${data.label} selecionado.`;
       });
-      $("#graph-meta").textContent = `${graph.nodes.length} nos e ${graph.edges.length} arestas carregados. Clique em um nó para ver detalhes.`;
+      $("#graph-meta").textContent = `${graph.nodes.length} nós e ${graph.edges.length} arestas carregados. Clique em um nó para ver detalhes.`;
     } catch (error) {
       $("#profile-root").innerHTML = `<div class="error-state">${error.message}</div>`;
     }
