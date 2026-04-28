@@ -23,7 +23,6 @@ Uso:
 
 import logging
 import os
-from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -99,14 +98,22 @@ def _load_pessoas(driver) -> "pd.DataFrame":
 
 def _run_splink(df: "pd.DataFrame") -> "pd.DataFrame":
     try:
-        import duckdb
         from splink import Linker
+        from splink import DuckDBAPI
     except ImportError as exc:
         raise ImportError("pip install splink duckdb") from exc
 
     settings = _get_splink_settings()
-    db_api = duckdb.connect()
-    linker  = Linker(df, settings, db_api=db_api)
+    try:
+        # Splink v4: Linker espera um DB API wrapper (não DuckDBPyConnection puro)
+        db_api = DuckDBAPI()
+        linker = Linker(df, settings, db_api=db_api)
+    except (TypeError, AttributeError):
+        # Fallback para assinaturas legadas que ainda aparecem em alguns ambientes
+        import duckdb
+
+        db_api = duckdb.connect()
+        linker = Linker(df, settings, db_api=db_api)
 
     log.info("  Estimando u-values (random sampling, max 1M pares)...")
     linker.training.estimate_u_using_random_sampling(max_pairs=1_000_000)
