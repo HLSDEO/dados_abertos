@@ -468,32 +468,43 @@ def generate_camara_data():
     )
 
 def generate_bndes_data():
-    print("Gerando dados do BNDES (operações de crédito)...")
+    print("Gerando dados do BNDES (pipeline compatível)...")
     bndes_dir = os.path.join(DATA_DIR, "bndes")
     os.makedirs(bndes_dir, exist_ok=True)
 
-    operacoes = pd.DataFrame({
-        'cnpj_beneficiario': ['12345678000199', '98765432000188', '22334455000166'],
-        'nome_beneficiario': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'INDUSTRIA BRASIL LTDA'],
+    df = pd.DataFrame({
+        '_id': ['EMP001', 'EMP002', 'EMP003'],  # CRÍTICO
+        'cnpj': ['12345678000199', '98765432000188', '22334455000166'],
+        'cliente': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'INDUSTRIA BRASIL LTDA'],
+        'descricao_do_projeto': ['EXPANSAO', 'MODERNIZACAO', 'ENERGIA SOLAR'],
         'uf': ['SP', 'RJ', 'MG'],
         'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BELO HORIZONTE'],
-        'setor': ['INFRAESTRUTURA', 'INDUSTRIA', 'ENERGIA'],
-        'programa': ['FINEM', 'BNDES AUTOMATICO', 'FINAME'],
-        'data_contratacao': ['2021-04-10', '2022-07-15', '2023-01-20'],
-        'valor_contratado': ['5000000.00', '2000000.00', '7500000.00'],
-        'valor_desembolsado': ['3000000.00', '1500000.00', '5000000.00'],
-        'situacao': ['ATIVA', 'ATIVA', 'ENCERRADA'],
-
-        # Metadados padrão
-        'fonte_nome': ['BNDES - Transparência'] * 3,
-        'fonte_url': ['https://www.bndes.gov.br'] * 3,
-        'fonte_descricao': ['Operações de crédito e financiamento'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
+        'numero_do_contrato': ['CTR001', 'CTR002', 'CTR003'],
+        'data_da_contratacao': ['2021-04-10', '2022-07-15', '2023-01-20'],
+        'valor_contratado_reais': ['5000000.00', '2000000.00', '7500000.00'],
+        'valor_desembolsado_reais': ['3000000.00', '1500000.00', '5000000.00'],
+        'fonte_de_recurso': ['TESOURO', 'TESOURO', 'FAT'],
+        'custo_financeiro': ['5.0', '4.5', '6.0'],
+        'juros': ['1.2', '1.1', '1.5'],
+        'prazo_carencia_meses': ['12', '6', '18'],
+        'prazo_amortizacao_meses': ['60', '48', '72'],
+        'modalidade_de_apoio': ['DIRETO', 'INDIRETO', 'DIRETO'],
+        'forma_de_apoio': ['FINANCIAMENTO', 'FINANCIAMENTO', 'FINANCIAMENTO'],
+        'produto': ['FINEM', 'BNDES AUTOMATICO', 'FINAME'],
+        'instrumento_financeiro': ['EMPRESTIMO', 'EMPRESTIMO', 'EMPRESTIMO'],
+        'inovacao': ['NAO', 'SIM', 'NAO'],
+        'area_operacional': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
+        'setor_cnae': ['1234', '5678', '9101'],
+        'subsetor_cnae_nome': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
+        'setor_bndes': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
+        'porte_do_cliente': ['GRANDE', 'MEDIO', 'GRANDE'],
+        'natureza_do_cliente': ['PRIVADA', 'PRIVADA', 'PRIVADA'],
+        'situacao_do_contrato': ['ATIVA', 'ATIVA', 'ENCERRADA'],
+        'fonte_nome': ['BNDES'] * 3
     })
 
-    operacoes.to_csv(
-        os.path.join(bndes_dir, "operacoes_credito.csv"),
+    df.to_csv(
+        os.path.join(bndes_dir, "operacoes_2024.csv"),
         index=False,
         sep=';',
         encoding='utf-8-sig'
