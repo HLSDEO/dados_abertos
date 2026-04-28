@@ -77,7 +77,7 @@ def _classify_score(score: float) -> str:
 
 def _load_pessoas(driver) -> "pd.DataFrame":
     import pandas as pd
-    log.info(f"  Carregando :Pessoa do Neo4j (limite {MAX_PESSOAS:,})...")
+    log.info(f"  Carregando :Pessoa do Neo4j (limite {SPLINK_MAX_PESSOAS:,})...")
     with driver.session() as session:
         result = session.run(
             """
@@ -87,7 +87,7 @@ def _load_pessoas(driver) -> "pd.DataFrame":
                    coalesce(p.dt_nascimento, '') AS dt_nascimento
             LIMIT $lim
             """,
-            lim=MAX_PESSOAS,
+            lim=SPLINK_MAX_PESSOAS,
         )
         rows = [dict(r) for r in result]
     df = pd.DataFrame(rows)
@@ -114,8 +114,8 @@ def _run_splink(df: "pd.DataFrame") -> "pd.DataFrame":
     log.info("  Estimando m-values (EM com bloqueio em cpf)...")
     linker.training.estimate_parameters_using_expectation_maximisation("l.cpf = r.cpf")
 
-    log.info(f"  Predizendo pares (threshold={MATCH_THRESHOLD})...")
-    results = linker.inference.predict(threshold_match_probability=MATCH_THRESHOLD)
+    log.info(f"  Predizendo pares (threshold={SPLINK_THRESHOLD})...")
+    results = linker.inference.predict(threshold_match_probability=SPLINK_THRESHOLD)
     df_out: "pd.DataFrame" = results.as_pandas_dataframe()
     log.info(f"  {len(df_out):,} pares encontrados acima do threshold")
     return df_out
@@ -164,7 +164,7 @@ def _write_links(driver, df_pares: "pd.DataFrame") -> int:
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
     log.info(
         f"[splink] Deduplicação probabilística  "
-        f"threshold={MATCH_THRESHOLD}  max_pessoas={MAX_PESSOAS:,}"
+        f"threshold={SPLINK_THRESHOLD}  max_pessoas={SPLINK_MAX_PESSOAS:,}"
     )
 
     try:
