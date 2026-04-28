@@ -363,21 +363,21 @@ function mountGraphPage(cytoscape) {
             <option>Estado</option>
           </select>
         </div>
-        <div class="field" style="grid-column: span 5;">
+        <div class="field" style="grid-column: span 4;">
           <label>Identificador</label>
           <input id="graph-id" placeholder="CPF, CNPJ basico, id parlamentar, UF..." />
         </div>
         <div class="field" style="grid-column: span 2;">
-          <label>Visualizacao</label>
+          <label>Visualização</label>
           <div class="mode-toggle">
             <button type="button" class="mode-option active" data-mode="2d">2D</button>
             <button type="button" class="mode-option" data-mode="3d">3D</button>
           </div>
         </div>
-        <div class="field" style="grid-column: span 4;">
+        <div class="field" style="grid-column: span 3;">
           <label>&nbsp;</label>
           <button class="button" id="graph-load">Expandir</button>
-          <button class="button" id="export-pdf-btn" style="background-color: #dc2626;">Exportar PDF</button>
+          <button class="button" id="export-pdf-btn" style="background-color: #dc2626; margin-left: 8px;">Exportar PDF</button>
         </div>
       </div>
     </section>>
