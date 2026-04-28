@@ -1,5 +1,7 @@
 import pandas as pd
 import os
+import json
+from datetime import datetime
 
 # Configuração de pastas
 DATA_DIR = "data"
@@ -498,42 +500,71 @@ def generate_bndes_data():
     )
 
 def generate_senado_data():
-    print("Gerando dados do Senado Federal (CEAP)...")
+    print("Gerando dados do Senado Federal (JSON - CEAP)...")
     senado_dir = os.path.join(DATA_DIR, "senado")
     os.makedirs(senado_dir, exist_ok=True)
 
-    despesas = pd.DataFrame({
-        'ano': ['2024', '2024', '2024'],
-        'mes': ['01', '02', '03'],
-        'cpf_senador': ['11111111111', '22222222222', '11111111111'],
-        'nome_senador': ['SEN. JOAO SILVA', 'SEN. MARIA SOUZA', 'SEN. JOAO SILVA'],
-        'partido': ['ABC', 'XYZ', 'ABC'],
-        'uf': ['SP', 'RJ', 'SP'],
-        'fornecedor': ['AUTO POSTO BRASIL LTDA', 'HOTEL CENTRAL LTDA', 'AGENCIA PUBLICIDADE'],
-        'cnpj_fornecedor': ['12345678000100', '22345678000100', '32345678000100'],
-        'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
-        'descricao': [
-            'Abastecimento de veículo oficial',
-            'Hospedagem em viagem oficial',
-            'Serviços de publicidade'
-        ],
-        'valor': ['900.00', '1800.00', '700.00'],
-        'data_emissao': ['2024-01-15', '2024-02-20', '2024-03-25'],
+    ano = 2024
 
-        # Metadados padrão
-        'fonte_nome': ['Senado Federal'] * 3,
-        'fonte_url': ['https://adm.senado.gov.br'] * 3,
-        'fonte_descricao': ['Despesas CEAP - Cota Parlamentar'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
-    })
+    data = [
+        {
+            "ano": 2024,
+            "mes": 1,
+            "cpf_senador": "11111111111",
+            "nome_senador": "SEN. JOAO SILVA",
+            "partido": "ABC",
+            "uf": "SP",
+            "fornecedor": "AUTO POSTO BRASIL LTDA",
+            "cnpj_fornecedor": "12345678000100",
+            "tipo_despesa": "COMBUSTIVEL",
+            "descricao": "Abastecimento de veículo oficial",
+            "valor": 900.00,
+            "data_emissao": "2024-01-15"
+        },
+        {
+            "ano": 2024,
+            "mes": 2,
+            "cpf_senador": "22222222222",
+            "nome_senador": "SEN. MARIA SOUZA",
+            "partido": "XYZ",
+            "uf": "RJ",
+            "fornecedor": "HOTEL CENTRAL LTDA",
+            "cnpj_fornecedor": "22345678000100",
+            "tipo_despesa": "HOSPEDAGEM",
+            "descricao": "Hospedagem em viagem oficial",
+            "valor": 1800.00,
+            "data_emissao": "2024-02-20"
+        },
+        {
+            "ano": 2024,
+            "mes": 3,
+            "cpf_senador": "11111111111",
+            "nome_senador": "SEN. JOAO SILVA",
+            "partido": "ABC",
+            "uf": "SP",
+            "fornecedor": "AGENCIA PUBLICIDADE",
+            "cnpj_fornecedor": "32345678000100",
+            "tipo_despesa": "DIVULGACAO",
+            "descricao": "Serviços de publicidade",
+            "valor": 700.00,
+            "data_emissao": "2024-03-25"
+        }
+    ]
 
-    despesas.to_csv(
-        os.path.join(senado_dir, "despesas_ceap.csv"),
-        index=False,
-        sep=';',
-        encoding='utf-8-sig'
-    )
+    wrapped = {
+        "metadata": {
+            "fonte_nome": "Senado Federal",
+            "fonte_descricao": "Despesas CEAP - Cota Parlamentar",
+            "fonte_url": "https://adm.senado.gov.br",
+            "fonte_licenca": "CC-BY 4.0",
+            "ano": ano,
+            "coletado_em": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        },
+        "data": data
+    }
+
+    with open(os.path.join(senado_dir, f"despesas_{ano}.json"), "w", encoding="utf-8") as f:
+        json.dump(wrapped, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     generate_ibge_data() #ibge
