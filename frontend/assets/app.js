@@ -369,6 +369,10 @@ function mountGraphPage(cytoscape) {
           <label>&nbsp;</label>
           <button class="button" id="graph-load">Expandir</button>
         </div>
+        <div class="field" style="grid-column: span 2;">
+          <label>&nbsp;</label>
+          <button class="button secondary" id="export-pdf-btn">Exportar PDF</button>
+        </div>
       </div>
     </section>
     <section id="graph-layout" class="split graph-layout">
@@ -599,76 +603,172 @@ function mountGraphPage(cytoscape) {
     };
   }
 
-  async function loadGraph(label, id, hops) {
-    $("#graph-meta").textContent = "Carregando conexoes...";
-    try {
-      const resolved = await resolveGraphTarget(label, id);
-      const effectiveLabel = resolved.label;
-      const effectiveId = resolved.id;
+    async function loadGraph(label, id, hops) {
+      $("#graph-meta").textContent = "Carregando conexoes...";
+      try {
+        const resolved = await resolveGraphTarget(label, id);
+        const effectiveLabel = resolved.label;
+        const effectiveId = resolved.id;
 
-      if (resolved.resolvedBy === "search") {
-        $("#graph-label").value = effectiveLabel;
-        $("#graph-id").value = effectiveId;
-        $("#graph-meta").textContent =
-          resolved.requestedLabel === effectiveLabel
-            ? `Termo resolvido por busca: ${resolved.nome || effectiveId}.`
-            : `Termo resolvido por busca: ${resolved.nome || effectiveId} (${effectiveLabel}).`;
-      }
+        if (resolved.resolvedBy === "search") {
+          $("#graph-label").value = effectiveLabel;
+          $("#graph-id").value = effectiveId;
+          $("#graph-meta").textContent =
+            resolved.requestedLabel === effectiveLabel
+              ? `Termo resolvido por busca: ${resolved.nome || effectiveId}.`
+              : `Termo resolvido por busca: ${resolved.nome || effectiveId} (${effectiveLabel}).`;
+        }
 
-      currentGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(effectiveLabel)}&id=${encodeURIComponent(effectiveId)}&hops=${hops}&max_nodes=120`);
-      $("#graph-selection").innerHTML = `${labelBadge(effectiveLabel)}<div style="margin-top:10px;" class="mono">${effectiveId}</div>`;
-      $("#graph-stats").innerHTML = `
-        <span class="pill">${currentGraph.nodes.length} nos</span>
-        <span class="pill">${currentGraph.edges.length} arestas</span>
-        <span class="pill">grau raiz ${currentGraph.meta.degree}</span>
-        <span class="pill">${currentGraph.meta.is_supernode ? "limite superno ativo" : "expansao completa"}</span>
-      `;
+        currentGraph = await apiFetch(`/graph/expand?label=${encodeURIComponent(effectiveLabel)}&id=${encodeURIComponent(effectiveId)}&hops=${hops}&max_nodes=120`);
+        $("#graph-selection").innerHTML = `${labelBadge(effectiveLabel)}<div style="margin-top:10px;" class="mono">${effectiveId}</div>`;
+        $("#graph-stats").innerHTML = `
+          <span class="pill">${currentGraph.nodes.length} nos</span>
+          <span class="pill">${currentGraph.edges.length} arestas</span>
+          <span class="pill">grau raiz ${currentGraph.meta.degree}</span>
+          <span class="pill">${currentGraph.meta.is_supernode ? "limite superno ativo" : "expansao completa"}</span>
+        `;
 
-      await redrawGraph();
-      $("#graph-meta").textContent = "Clique em um no para adicionar novas conexoes ao grafo atual.";
-    } catch (error) {
-      $("#graph-meta").textContent = "Nao foi possivel carregar o grafo.";
-      $("#graph-selection").innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  }
-
-  $("#graph-load").addEventListener("click", () => {
-    loadGraph($("#graph-label").value, $("#graph-id").value.trim(), 1);
-  });
-
-  document.querySelectorAll(".mode-option").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const nextMode = button.dataset.mode;
-      if (nextMode === graphMode) return;
-      graphMode = nextMode;
-      syncModeButtons();
-      if (currentGraph) {
         await redrawGraph();
+        $("#graph-meta").textContent = "Clique em um no para adicionar novas conexoes ao grafo atual.";
+      } catch (error) {
+        $("#graph-meta").textContent = "Nao foi possivel carregar o grafo.";
+        $("#graph-selection").innerHTML = `<div class="error-state">${error.message}</div>`;
+      }
+    }
+
+    async function exportGraphToPDF() {
+      const btn = $("#export-pdf-btn");
+      const originalText = btn.textContent;
+      btn.textContent = "Gerando...";
+      btn.disabled = true;
+
+      try {
+        if (!window.jspdf) {
+          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+        }
+        if (!window.html2canvas) {
+          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+        }
+
+        const { jsPDF } = window.jspdf;
+
+        const graphCanvas = $("#graph-canvas");
+        const canvas = await window.html2canvas(graphCanvas, {
+          backgroundColor: "#090b0d",
+          scale: 2,
+        });
+
+        const imgData = canvas.toDataURL("image/png");
+        const pdf = new jsPDF("l", "mm", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+
+        pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+
+        const effectiveLabel = $("#graph-label").value;
+        const effectiveId = $("#graph-id").value;
+        const stats = `${currentGraph?.nodes?.length || 0} nós, ${currentGraph?.edges?.length || 0} arestas`;
+        
+        pdf.setFontSize(9);
+        pdf.setTextColor(100);
+        pdf.text(`Grafo: ${effectiveLabel} | ID: ${effectiveId} | ${stats}`, 10, pageHeight - 20);
+        pdf.text(`Fonte: DABERTO - dados abertos | ${new Date().toLocaleDateString("pt-BR")}`, 10, pageHeight - 12);
+
+        pdf.addPage();
+        pdf.setFontSize(12);
+        pdf.setTextColor(0);
+        pdf.text("Descrição dos dados e origem", 10, 15);
+        
+        pdf.setFontSize(10);
+        pdf.setTextColor(80);
+        const description = [
+          "DABERTO - Inteligência Cívica",
+          "Infraestrutura open-source que cruza bases públicas brasileiras em grafo Neo4j.",
+          "",
+          "Bases de dados incluídas:",
+          "• IBGE - Localidades (municípios, estados, regiões)",
+          "• CNPJ / Receita Federal - Empresas e sócios",
+          "• TSE - Candidatos, partidos e eleições",
+          "• Emendas CGU - Emendas parlamentares",
+          "• Servidores CGU - Servidores públicos",
+          "• Sanções CGU - Penalidades e sanções",
+          "• PNCP - Contratos da administração pública",
+          "• PGFN - Dívida ativa",
+          "• Câmara CEAP - Cotas parlamentares",
+          "• BNDES - Empréstimos",
+          "• Senado CEAP - Cotas senatoriais",
+          "",
+          "Origem dos dados: dados.gov.br, portals de transparência, TSE, Receita Federal.",
+        ];
+        
+        let y = 20;
+        for (const line of description) {
+          pdf.text(line, 10, y);
+          y += 7;
+        }
+
+        pdf.save(`grafo-${effectiveLabel}-${effectiveId}.pdf`);
+      } catch (error) {
+        alert("Erro ao gerar PDF: " + error.message);
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) {
+          resolve();
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    $("#graph-load").addEventListener("click", () => {
+      loadGraph($("#graph-label").value, $("#graph-id").value.trim(), 1);
+    });
+
+    $("#export-pdf-btn").addEventListener("click", exportGraphToPDF);
+
+    document.querySelectorAll(".mode-option").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const nextMode = button.dataset.mode;
+        if (nextMode === graphMode) return;
+        graphMode = nextMode;
+        syncModeButtons();
+        if (currentGraph) {
+          await redrawGraph();
+        }
+      });
+    });
+
+    window.addEventListener("resize", () => {
+      if (graphMode === "3d" && currentGraph3D) {
+        const container = $("#graph-canvas-3d");
+        currentGraph3D.width(container.clientWidth || container.offsetWidth || 800);
+        currentGraph3D.height(container.clientHeight || container.offsetHeight || 520);
+        setTimeout(() => {
+          if (currentGraph3D) {
+            currentGraph3D.zoomToFit(700, 120);
+          }
+        }, 120);
       }
     });
-  });
 
-  window.addEventListener("resize", () => {
-    if (graphMode === "3d" && currentGraph3D) {
-      const container = $("#graph-canvas-3d");
-      currentGraph3D.width(container.clientWidth || container.offsetWidth || 800);
-      currentGraph3D.height(container.clientHeight || container.offsetHeight || 520);
-      setTimeout(() => {
-        if (currentGraph3D) {
-          currentGraph3D.zoomToFit(700, 120);
-        }
-      }, 120);
+    syncModeButtons();
+
+    if (initialLabel && initialId) {
+      $("#graph-label").value = initialLabel;
+      $("#graph-id").value = initialId;
+      loadGraph(initialLabel, initialId, 1);
     }
-  });
-
-  syncModeButtons();
-
-  if (initialLabel && initialId) {
-    $("#graph-label").value = initialLabel;
-    $("#graph-id").value = initialId;
-    loadGraph(initialLabel, initialId, 1);
   }
-}
 
 function normalizeProfileValue(tipo, id, payload) {
   if (tipo === "Pessoa") return payload.pessoa?.nome || maskCPF(id);

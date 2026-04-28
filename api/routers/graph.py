@@ -16,7 +16,8 @@ _LABEL_KEY = {
     "Emenda":      "codigo_emenda",
     "Contrato":    "contrato_id",
     "Sancao":      "id",
-    "Eleicao":     "id",
+    "Eleicao":     "eleicao_id",
+    "BemDeclarado": "bem_id",
 }
 
 
@@ -25,7 +26,8 @@ _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
                  "gds_pagerank", "gds_comunidade", "gds_betweenness",
                  "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
                  "tipo_sancao", "data_inicio", "numero_contrato", "valor_contratado_reais",
-                 "produto", "setor_bndes", "descricao", "ds_eleicao", "tipo", "nome_urna"]
+                 "produto", "setor_bndes", "descricao", "ds_eleicao", "tipo", "nome_urna",
+                 "bem_id", "eleicao_id"]
 
 
 def _serialize_node(node) -> dict:
