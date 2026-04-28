@@ -61,7 +61,16 @@ def _get_splink_settings() -> dict:
         retain_matching_columns=True,
         retain_intermediate_calculation_columns=False,
     )
-    return creator.get_settings("duckdb")
+    settings = creator.get_settings("duckdb")
+    if isinstance(settings, dict):
+        return settings
+    if hasattr(settings, "as_dict"):
+        return settings.as_dict()
+    if hasattr(settings, "to_dict"):
+        return settings.to_dict()
+    raise TypeError(
+        f"Formato de settings Splink não suportado: {type(settings)}"
+    )
 
 
 def _classify_score(score: float) -> str:
@@ -104,16 +113,9 @@ def _run_splink(df: "pd.DataFrame") -> "pd.DataFrame":
         raise ImportError("pip install splink duckdb") from exc
 
     settings = _get_splink_settings()
-    try:
-        # Splink v4: Linker espera um DB API wrapper (não DuckDBPyConnection puro)
-        db_api = DuckDBAPI()
-        linker = Linker(df, settings, db_api=db_api)
-    except (TypeError, AttributeError):
-        # Fallback para assinaturas legadas que ainda aparecem em alguns ambientes
-        import duckdb
-
-        db_api = duckdb.connect()
-        linker = Linker(df, settings, db_api=db_api)
+    # Splink v4: Linker espera um DB API wrapper (não DuckDBPyConnection puro)
+    db_api = DuckDBAPI()
+    linker = Linker(df, settings, db_api=db_api)
 
     log.info("  Estimando u-values (random sampling, max 1M pares)...")
     linker.training.estimate_u_using_random_sampling(max_pairs=1_000_000)
