@@ -140,13 +140,14 @@ Comandos: `download | pipeline | analytics | run | schema | ingestion-status`
 | `run_batches()` | UNWIND em lotes com retry automático em deadlock |
 | `iter_csv()` | Lê CSV em chunks sem carregar em memória; auto-detecta delimitador |
 | `setup_schema()` | Cria constraints, índices e fulltext index (`entidade_busca`) de forma idempotente |
-| `IngestionRun` | Context manager de auditoria — grava nó `:IngestionRun` com status, timestamps e contagens |
+| `IngestionRun` | Context manager de auditoria — grava nó `:IngestionRun` com status, timestamps e contagens. Use `run_ctx.add(rows_in=X, rows_out=Y)` para reportar progresso. |
 | `classify_doc()` | Classifica CPF/CNPJ: `cpf_valid` \| `cpf_partial` \| `cnpj_valid` \| `invalid` |
 | `make_partner_id()` | SHA-256[:16] de `nome\|doc_digits\|doc_raw\|tipo\|fonte` para identidades parciais |
 
 ### Padrões de pipeline
 - Cada pipeline chama `setup_schema(driver)` antes de inserir dados.
-- Todo `run()` é envolvido em `with IngestionRun(driver, "source_id"):`.
+- Todo `run()` é envolvido em `with IngestionRun(driver, "source_id") as run_ctx:`.
+- **Auditoria Obrigatória**: Sempre chame `run_ctx.add(rows_in=N, rows_out=N)` ao final ou durante o loop para evitar contadores zerados no painel.
 - Carga em chunks via `iter_csv()` + `run_batches()` com retry em deadlock.
 - CNPJ paralleliza simples + estabelecimentos + sócios com `ThreadPoolExecutor` após empresas.
 - `DATA_DIR` usa `Path(__file__).resolve().parents[1] / "data"` como fallback local (em Docker é `/app/data` via volume).
@@ -239,7 +240,7 @@ Criado por `setup_schema()`. Cobre 13 labels: `Pessoa | Empresa | Partner | Serv
 `5-emendas_cgu.py` resolve nomes como "PR. MARCO FELICIANO" → CPF via cascata: exact → normalized → token subset → reverse subset. Só vincula com CPF único.
 
 ### GDS Analytics
-`analytics/1-gds.py` projeta: Empresa, Pessoa, Partner, Municipio, Estado, Parlamentar, Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao. Grava `gds_comunidade`, `gds_pagerank`, `gds_betweenness` em cada nó. Cria `(:Empresa)-[:SIMILAR_A {score}]->(:Empresa)`.
+`analytics/1-gds.py` projeta o grafo para algoritmos de centralidade e comunidade. Suporta perfis de memória (`full`, `lean`, `core`, `tiny`). O perfil `tiny` é otimizado para ambientes com 2-4GB de RAM, focando apenas em Empresas e Sanções. Grava `gds_comunidade`, `gds_pagerank`, `gds_betweenness` em cada nó. Cria `(:Empresa)-[:SIMILAR_A {score}]->(:Empresa)`.
 
 ### Motor de Padrões (`routers/patterns.py`)
 Detecta e retorna padrões de corrupção/irregularidade por empresa (`/patterns/empresa/{cnpj}`) ou por estado (`/patterns/estado/{uf}`). Retorna apenas padrões com `triggered=true` e suas evidências. Ver tabela completa no `readme.md`.

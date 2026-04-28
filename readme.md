@@ -66,6 +66,8 @@ copy .env.prod .env
 | `WORKERS` | `4` | `8` | ZIPs paralelos (ETL) |
 | `NEO4J_BATCH` | `2000` | `5000` | Linhas por UNWIND (ETL) |
 | `PIPELINE_WORKERS` | `2` | `4` | Sessões Neo4j paralelas (ETL) |
+| `GDS_MAX_MEMORY_GB` | `4.0` | `32.0` | Limite de memória para projeção GDS |
+| `GDS_PROFILE` | `auto` | `full` | Perfil GDS (`auto`, `full`, `lean`, `core`, `tiny`) |
 
 > **Dev**: 8 cores / 24 GB RAM  
 > **Prod**: 24 cores / 120 GB RAM
@@ -100,6 +102,8 @@ docker compose run --rm etl run cnpj --full                # download + pipeline
 docker compose run --rm etl analytics gds       # Louvain, PageRank, Betweenness, NodeSimilarity
 docker compose run --rm etl analytics splink    # deduplicação probabilística de pessoas
 ```
+
+> **GDS**: Se o ambiente tiver pouca RAM, use `GDS_PROFILE=tiny` no `.env` para focar apenas em Empresas e Sanções.
 
 #### Schema e status
 ```bash
