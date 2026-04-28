@@ -333,39 +333,56 @@ def generate_servidores_cgu_data():
     )
 
 def generate_sancoes_cgu_data():
-    print("Gerando dados de sanções (CGU)...")
-    cgu_dir = os.path.join(DATA_DIR, "cgu")
-    os.makedirs(cgu_dir, exist_ok=True)
+    print("Gerando dados de sanções CGU (compatível com pipeline)...")
 
-    sancoes = pd.DataFrame({
-        'cpf_cnpj': ['11111111111', '12345678000199', '22222222222'],
-        'tipo_pessoa': ['FISICA', 'JURIDICA', 'FISICA'],
-        'nome_sancionado': ['JOAO SILVA', 'EMPRESA XYZ LTDA', 'MARIA SOUZA'],
-        'orgao_sancionador': ['CGU', 'MINISTERIO DA SAUDE', 'CGU'],
-        'tipo_sancao': ['DEMITIDO', 'SUSPENSAO', 'DESTITUICAO'],
-        'descricao_sancao': [
-            'Demissão por improbidade administrativa',
-            'Suspensão por irregularidade em contrato',
-            'Destituição de cargo comissionado'
-        ],
-        'data_inicio_sancao': ['2022-05-10', '2023-08-15', '2021-11-20'],
-        'data_fim_sancao': ['2027-05-10', '2025-08-15', '2024-11-20'],
-        'situacao': ['ATIVA', 'ATIVA', 'ENCERRADA'],
-        'uf': ['DF', 'SP', 'DF'],
-        'municipio': ['BRASILIA', 'SAO PAULO', 'BRASILIA'],
+    sancoes_dir = os.path.join(DATA_DIR, "sancoes_cgu")
+    os.makedirs(sancoes_dir, exist_ok=True)
 
-        # Metadados padrão
-        'fonte_nome': ['CGU - Portal da Transparência'] * 3,
-        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
-        'fonte_descricao': ['Cadastro de sanções administrativas'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
+    # CEIS
+    ceis = pd.DataFrame({
+        'cpf_cnpj': ['11111111111', '12345678000199'],
+        'nome': ['JOAO SILVA', 'EMPRESA XYZ LTDA'],
+        'tipo_sancao': ['DEMITIDO', 'INIDONEIDADE'],
+        'data_inicio': ['2022-05-10', '2023-08-15'],
+        'data_fim': ['2027-05-10', '2025-08-15'],
+        'orgao_sancionador': ['CGU', 'MINISTERIO DA SAUDE'],
+        'uf_orgao': ['DF', 'DF'],
+        'esfera_governo': ['FEDERAL', 'FEDERAL'],
+        'fundamentacao': ['IMPROBIDADE', 'FRAUDE'],
+        'numero_processo': ['123', '456'],
+        'valor_multa': ['0,00', '10000,00'],
+        'fonte_nome': ['CGU'] * 2,
+        'fonte_url': ['https://portaldatransparencia.gov.br'] * 2
     })
 
-    sancoes.to_csv(
-        os.path.join(cgu_dir, "sancoes.csv"),
+    ceis.to_csv(
+        os.path.join(sancoes_dir, "ceis.csv"),
         index=False,
-        sep=';',
+        sep=',',
+        encoding='utf-8-sig'
+    )
+
+    # CNEP
+    cnep = pd.DataFrame({
+        'cpf_cnpj': ['22345678000100'],
+        'nome': ['EMPRESA FRAUDULENTA SA'],
+        'tipo_sancao': ['MULTA'],
+        'data_inicio': ['2021-03-01'],
+        'data_fim': ['2024-03-01'],
+        'orgao_sancionador': ['CGU'],
+        'uf_orgao': ['DF'],
+        'esfera_governo': ['FEDERAL'],
+        'fundamentacao': ['ATO LESIVO'],
+        'numero_processo': ['789'],
+        'valor_multa': ['50000,00'],
+        'fonte_nome': ['CGU'],
+        'fonte_url': ['https://portaldatransparencia.gov.br']
+    })
+
+    cnep.to_csv(
+        os.path.join(sancoes_dir, "cnep.csv"),
+        index=False,
+        sep=',',
         encoding='utf-8-sig'
     )
 
