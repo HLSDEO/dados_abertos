@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Visão Geral
 
-DABERTO é uma infraestrutura open-source que cruza bases públicas brasileiras em um grafo Neo4j para gerar inteligência cívica. Stack: **Neo4j 5 + GDS** (grafo), **FastAPI** (API), **Python 3.12 ETL** (pandas/requests/neo4j-driver), orquestrado via **Docker Compose**.
+DABERTO é uma infraestrutura open-source que cruza bases públicas brasileiras em um grafo Neo4j para gerar inteligência cívica. Stack: **Neo4j 5 + GDS** (grafo), **FastAPI** (API), **Redis 7** (cache), **Nginx** (frontend), **Python 3.12 ETL** (pandas/requests/neo4j-driver), orquestrado via **Docker Compose**.
 
 ## Estrutura do Projeto
 
@@ -14,17 +14,25 @@ dados_abertos/
   etl/           — orquestrador main.py + download/ + pipeline/ + analytics/
   etl/data/      — dados baixados (gitignored, exceto .keep)
   neo4j/         — Dockerfile customizado (instala GDS) + conf/
+  frontend/      — interface web estática: index.html, nginx.conf, assets/, Dockerfile
 ```
 
 ## Comandos Principais
 
 ```bash
-# Subir Neo4j + API
+# Subir todos os serviços (Neo4j + API + Redis + Frontend)
 docker compose up -d
 
-# API disponível em http://localhost:8000/docs
-# Métricas em http://localhost:8000/metrics
-# Neo4j Browser em http://localhost:7474 (neo4j/changeme)
+# URLs
+# Frontend:       http://localhost:8080
+# API (Swagger):  http://localhost:8000/docs
+# Métricas:       http://localhost:8000/metrics
+# Neo4j Browser:  http://localhost:7474 (neo4j/changeme)
+# Redis:          redis://localhost:6379
+
+# Perfis de ambiente
+cp .env.dev  .env   # desenvolvimento (8 cores / 24 GB RAM)
+cp .env.prod .env   # produção (24 cores / 120 GB RAM)
 
 # ETL
 docker compose run --rm etl                                  # completo
@@ -43,6 +51,7 @@ docker compose run --rm etl ingestion-status
 # Rebuild
 docker compose build --no-cache etl
 docker compose build --no-cache api
+docker compose build --no-cache frontend
 ```
 
 ## Arquitetura API (`api/`)
@@ -53,13 +62,58 @@ docker compose build --no-cache api
 | `deps.py` | Singleton do driver Neo4j (pool configurável) + timeout por query + métricas de query |
 | `cache.py` | Cache Redis com fallback seguro + key builder/hash + TTL |
 | `observability.py` | Métricas Prometheus HTTP e Neo4j (`Counter`/`Histogram`) |
-| `routers/search.py` | `GET /search?q=` — fulltext com paginação (`limit`/`offset`) + cache |
-| `routers/pessoa.py` | `GET /pessoa/{cpf}` — perfil com paginação (`limit`/`offset`) + cache |
-| `routers/empresa.py` | `GET /empresa/{cnpj_basico}` — perfil com paginação (`limit`/`offset`) + cache |
+| `routers/search.py` | `GET /search?q=` — fulltext com paginação (`limit`/`offset`) + cache Redis |
+| `routers/pessoa.py` | `GET /pessoa/{cpf}` — perfil com paginação (`limit`/`offset`) + cache Redis |
+| `routers/empresa.py` | `GET /empresa/{cnpj_basico}` — perfil com paginação (`limit`/`offset`) + cache Redis |
 | `routers/parlamentar.py` | `GET /parlamentar/{id}` — perfil com paginação (`limit`/`offset`) |
 | `routers/graph.py` | `GET /graph/expand?label=&id=&hops=` — subgrafo com paginação (`offset`) |
+| `routers/patterns.py` | `GET /patterns/empresa/{cnpj}` e `GET /patterns/estado/{uf}` — padrões de irregularidade |
 
 O endpoint `/graph/expand` retorna `{nodes, edges}` com `uid` no formato `Label:valor_chave` — pronto para Sigma.js/Cytoscape.js.
+
+### Paginação
+
+Todos os endpoints de leitura aceitam `limit` (padrão `20`) e `offset` (padrão `0`). Aplicar sempre nos parâmetros de query Cypher com `SKIP $offset LIMIT $limit` para evitar varreduras completas.
+
+### Cache Redis (`cache.py`)
+
+- `get_cached(key)` / `set_cached(key, value, ttl)` com fallback silencioso.
+- Chave construída via `build_cache_key(prefix, **params)` → SHA-256[:16] dos params.
+- `CACHE_ENABLED=0` desabilita completamente sem alterar código dos routers.
+- Endpoints com cache: `search`, `pessoa`, `empresa`.
+
+### Observabilidade (`observability.py`)
+
+Métricas Prometheus expostas em `GET /metrics`:
+
+| Métrica | Tipo | Label(s) |
+|---|---|---|
+| `http_requests_total` | Counter | `method`, `endpoint`, `status` |
+| `http_request_duration_seconds` | Histogram | `endpoint` |
+| `http_exceptions_total` | Counter | `endpoint`, `exception` |
+| `neo4j_query_duration_seconds` | Histogram | `router` |
+| `neo4j_queries_total` | Counter | `router`, `status` (`ok`/`error`) |
+| `neo4j_slow_queries_total` | Counter | `router` |
+
+Limiar de query lenta: `SLOW_QUERY_THRESHOLD_SECONDS` (padrão `2.0`).
+
+## Arquitetura Frontend (`frontend/`)
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `index.html` | Página principal: busca, perfis, visualização de grafo |
+| `nginx.conf` | Proxy `/api/` → `api:8000`; serve estáticos em `/usr/share/nginx/html` |
+| `Dockerfile` | `nginx:alpine` com injeção de `nginx.conf` e arquivos estáticos |
+| `assets/` | CSS, JavaScript (Sigma.js/Cytoscape.js), ícones |
+
+O frontend consome diretamente os endpoints da API. O proxy Nginx elimina CORS em produção:
+```nginx
+location /api/ {
+    proxy_pass http://api:8000/;
+}
+```
+
+Nós do grafo usam `uid` no formato `Label:chave`, compatível nativamente com Sigma.js e Cytoscape.js. A paginação de expansão de grafo usa o parâmetro `offset` para carregamento incremental de vizinhos.
 
 ## Arquitetura ETL (`etl/`)
 
@@ -79,6 +133,7 @@ Carrega módulos dinamicamente via `importlib`. Os registros `DOWNLOADS`, `PIPEL
 Comandos: `download | pipeline | analytics | run | schema | ingestion-status`
 
 ### `etl/pipeline/lib.py` — utilitários centrais
+
 | Função / Classe | Descrição |
 |---|---|
 | `wait_for_neo4j()` | Cria driver e aguarda Bolt disponível (retry) |
@@ -96,28 +151,49 @@ Comandos: `download | pipeline | analytics | run | schema | ingestion-status`
 - CNPJ paralleliza simples + estabelecimentos + sócios com `ThreadPoolExecutor` após empresas.
 - `DATA_DIR` usa `Path(__file__).resolve().parents[1] / "data"` como fallback local (em Docker é `/app/data` via volume).
 
-### Variáveis de ambiente (`.env` na raiz)
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `NEO4J_URI` | `bolt://neo4j:7687` | URI Bolt |
-| `NEO4J_USER` | `neo4j` | Usuário |
-| `NEO4J_PASSWORD` | `changeme` | Senha |
-| `NEO4J_TRANSACTION_TIMEOUT` | `120s` | Timeout de transação no Neo4j |
-| `NEO4J_QUERY_TIMEOUT_SECONDS` | `120` | Timeout por query na API |
-| `NEO4J_MAX_CONNECTION_POOL_SIZE` | `20` | Pool de conexões Neo4j da API |
-| `API_WORKERS` | `4` | Workers do Gunicorn |
-| `API_THREADS` | `2` | Threads por worker do Gunicorn |
-| `API_TIMEOUT_SECONDS` | `120` | Timeout HTTP do Gunicorn |
-| `CACHE_ENABLED` | `1` | Liga/desliga cache Redis |
-| `REDIS_URL` | `redis://redis:6379/0` | Endereço do Redis |
-| `CACHE_DEFAULT_TTL_SECONDS` | `60` | TTL padrão do cache |
-| `SLOW_QUERY_THRESHOLD_SECONDS` | `2.0` | Limiar de query lenta para métrica |
-| `CHUNK_SIZE` | `200000` | Linhas por chunk de leitura (CNPJ usa 50000) |
-| `WORKERS` | `4` | ZIPs processados em paralelo |
-| `NEO4J_BATCH` | `2000` | Linhas por UNWIND (CNPJ usa 5000) |
-| `PIPELINE_WORKERS` | `2` | Sessões Neo4j paralelas (CNPJ) |
-| `SPLINK_THRESHOLD` | `0.8` | Threshold de match para Splink |
-| `SPLINK_MAX_PESSOAS` | `2000000` | Limite de `:Pessoa` carregados no Splink |
+## Variáveis de Ambiente (`.env` na raiz)
+
+### Neo4j
+
+| Variável | Dev | Prod | Descrição |
+|---|---|---|---|
+| `NEO4J_USER` | `neo4j` | `neo4j` | Usuário |
+| `NEO4J_PASSWORD` | `changeme` | `<forte>` | Senha |
+| `NEO4J_HEAP_INITIAL_SIZE` | `1g` | `4g` | Heap inicial |
+| `NEO4J_HEAP_MAX_SIZE` | `2g` | `8g` | Heap máximo |
+| `NEO4J_PAGECACHE_SIZE` | `2g` | `16g` | Page cache |
+| `NEO4J_TRANSACTION_TIMEOUT` | `120s` | `300s` | Timeout de transação |
+
+### API
+
+| Variável | Dev | Prod | Descrição |
+|---|---|---|---|
+| `API_PORT` | `8000` | `8000` | Porta |
+| `API_WORKERS` | `4` | `16` | Workers Gunicorn |
+| `API_THREADS` | `2` | `4` | Threads por worker |
+| `API_TIMEOUT_SECONDS` | `120` | `300` | Timeout HTTP |
+| `NEO4J_QUERY_TIMEOUT_SECONDS` | `120` | `300` | Timeout de query Neo4j |
+| `NEO4J_MAX_CONNECTION_POOL_SIZE` | `20` | `50` | Pool de conexões |
+| `SLOW_QUERY_THRESHOLD_SECONDS` | `2.0` | `5.0` | Limiar de query lenta |
+
+### Redis / Cache
+
+| Variável | Dev | Prod | Descrição |
+|---|---|---|---|
+| `CACHE_ENABLED` | `1` | `1` | Liga/desliga cache |
+| `REDIS_URL` | `redis://redis:6379/0` | `redis://redis:6379/0` | Endereço Redis |
+| `CACHE_DEFAULT_TTL_SECONDS` | `60` | `300` | TTL padrão |
+
+### ETL
+
+| Variável | Dev | Prod | Descrição |
+|---|---|---|---|
+| `CHUNK_SIZE` | `150000` | `200000` | Linhas por chunk de leitura |
+| `WORKERS` | `4` | `8` | ZIPs processados em paralelo |
+| `NEO4J_BATCH` | `2000` | `5000` | Linhas por UNWIND |
+| `PIPELINE_WORKERS` | `2` | `4` | Sessões Neo4j paralelas |
+| `SPLINK_THRESHOLD` | `0.8` | `0.8` | Threshold de match Splink |
+| `SPLINK_MAX_PESSOAS` | `2000000` | `2000000` | Limite de `:Pessoa` no Splink |
 
 ## Bases de Dados
 
@@ -135,6 +211,18 @@ Comandos: `download | pipeline | analytics | run | schema | ingestion-status`
 
 ## Features Avançadas
 
+### Frontend com Visualização de Grafo
+Interface estática (Nginx) que consome a API. Renderiza subgrafos interativos com Sigma.js/Cytoscape.js usando `uid` no formato `Label:chave`. Proxy Nginx em `/api/` elimina CORS.
+
+### Paginação e Proteção de Carga
+`limit`/`offset` em todos os endpoints de leitura. No Cypher: `SKIP $offset LIMIT $limit`. Impede varreduras acidentais de grandes subgrafos.
+
+### Cache Redis com Fallback Seguro (`cache.py`)
+`search`, `pessoa`, `empresa` armazenam respostas no Redis. Fallback transparente se Redis cair. Chave = SHA-256[:16] dos parâmetros. TTL e enable/disable via `.env`.
+
+### Observabilidade Prometheus (`observability.py`)
+`GET /metrics` expõe counters e histogramas de latência HTTP e Neo4j. Pronto para Grafana. Queries lentas rastreadas via `neo4j_slow_queries_total`.
+
 ### Identidade Parcial (`:Partner`)
 Sócios CNPJ com CPF mascarado ou inválido viram nós `:Partner` com `partner_id` estável (SHA-256[:16] de `nome|doc_digits|doc_raw|tipo|rfb`). Relação `(:Partner)-[:SOCIO_DE]->(:Empresa)`. Permite resolução futura via `MESMO_QUE` quando CPF completo aparecer em outra fonte.
 
@@ -144,20 +232,6 @@ Todo pipeline cria `:IngestionRun {run_id}` com `status`, `rows_in/out`, timesta
 ### Fulltext Search (`entidade_busca`)
 Criado por `setup_schema()`. Cobre 13 labels: `Pessoa | Empresa | Partner | Servidor | Parlamentar | Emenda | Contrato | Sancao | Municipio | Estado | Partido | Eleicao | Licitacao`
 
-### Paginação e proteção de carga na API
-Endpoints de leitura aceitam `limit`/`offset` para reduzir payload e cardinalidade por chamada.
-
-### Cache Redis (endpoints quentes)
-`search`, `pessoa` e `empresa` usam cache Redis com fallback transparente quando indisponível.
-
-### Observabilidade básica
-- `GET /metrics` expõe métricas Prometheus.
-- HTTP: latência por endpoint, total por status e exceções.
-- Neo4j: latência de query, total `ok/error` e contador de queries lentas.
-
-### Índices base para API
-`setup_schema()` aplica índices centrais para acelerar lookups/filtros de `Pessoa`, `Empresa`, `Parlamentar`, `Municipio`, `Emenda` e `Sancao`.
-
 ### Deduplicação Probabilística (Splink)
 `analytics/2-splink.py` — Jaro-Winkler no `nome` + exact match em `cpf`/`dt_nascimento`. Cria `(:Pessoa)-[:MESMO_QUE {score, confianca}]->(:Pessoa)`. Requer `pip install splink duckdb`.
 
@@ -166,3 +240,6 @@ Endpoints de leitura aceitam `limit`/`offset` para reduzir payload e cardinalida
 
 ### GDS Analytics
 `analytics/1-gds.py` projeta: Empresa, Pessoa, Partner, Municipio, Estado, Parlamentar, Emenda, Sancao, Servidor, UnidadeGestora, Partido, Contrato, Licitacao. Grava `gds_comunidade`, `gds_pagerank`, `gds_betweenness` em cada nó. Cria `(:Empresa)-[:SIMILAR_A {score}]->(:Empresa)`.
+
+### Motor de Padrões (`routers/patterns.py`)
+Detecta e retorna padrões de corrupção/irregularidade por empresa (`/patterns/empresa/{cnpj}`) ou por estado (`/patterns/estado/{uf}`). Retorna apenas padrões com `triggered=true` e suas evidências. Ver tabela completa no `readme.md`.
