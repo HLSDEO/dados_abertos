@@ -434,36 +434,29 @@ def generate_cpgf_data():
     )
 
 def generate_camara_data():
-    print("Gerando dados da Câmara dos Deputados (CEAP)...")
+    print("Gerando dados da Câmara (compatível com pipeline)...")
     camara_dir = os.path.join(DATA_DIR, "camara")
     os.makedirs(camara_dir, exist_ok=True)
 
-    despesas = pd.DataFrame({
+    df = pd.DataFrame({
+        'despesa_id': ['D001', 'D002', 'D003'],  # CRÍTICO
         'ano': ['2024', '2024', '2024'],
-        'mes': ['01', '02', '03'],
-        'cpf_deputado': ['11111111111', '22222222222', '11111111111'],
-        'nome_deputado': ['DEP. JOAO SILVA', 'DEP. MARIA SOUZA', 'DEP. JOAO SILVA'],
+        'mes': ['1', '2', '3'],
+        'nome_parlamentar': ['DEP. JOAO SILVA', 'DEP. MARIA SOUZA', 'DEP. JOAO SILVA'],
         'partido': ['ABC', 'XYZ', 'ABC'],
         'uf': ['SP', 'RJ', 'SP'],
-        'fornecedor': ['EMPRESA COMBUSTIVEL LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
+        'nome_fornecedor': ['EMPRESA COMBUSTIVEL LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
         'cnpj_fornecedor': ['12345678000100', '22345678000100', '32345678000100'],
         'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
-        'descricao': ['Abastecimento veículo', 'Hospedagem em viagem oficial', 'Material gráfico'],
         'valor_liquido': ['800.00', '1500.00', '600.00'],
         'data_emissao': ['2024-01-12', '2024-02-18', '2024-03-22'],
-
-        # Metadados padrão
-        'fonte_nome': ['Câmara dos Deputados'] * 3,
-        'fonte_url': ['https://dadosabertos.camara.leg.br'] * 3,
-        'fonte_descricao': ['Despesas CEAP - Cota Parlamentar'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
+        'fonte_nome': ['Câmara dos Deputados'] * 3
     })
 
-    despesas.to_csv(
-        os.path.join(camara_dir, "despesas_ceap.csv"),
+    df.to_csv(
+        os.path.join(camara_dir, "despesas_2024.csv"),
         index=False,
-        sep=';',
+        sep=',',
         encoding='utf-8-sig'
     )
 
