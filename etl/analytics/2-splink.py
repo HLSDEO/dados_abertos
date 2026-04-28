@@ -113,6 +113,7 @@ def _run_splink(df: "pd.DataFrame") -> "pd.DataFrame":
     try:
         from splink import Linker
         from splink import DuckDBAPI
+        from splink.internals.exceptions import EMTrainingException
     except ImportError as exc:
         raise ImportError("pip install splink duckdb") from exc
 
@@ -124,8 +125,32 @@ def _run_splink(df: "pd.DataFrame") -> "pd.DataFrame":
     log.info("  Estimando u-values (random sampling, max 1M pares)...")
     linker.training.estimate_u_using_random_sampling(max_pairs=1_000_000)
 
-    log.info("  Estimando m-values (EM com bloqueio em cpf)...")
-    linker.training.estimate_parameters_using_expectation_maximisation("l.cpf = r.cpf")
+    # Regras de bloqueio para treinamento EM, em ordem de preferência.
+    # A regra por CPF exato é a mais precisa, mas requer ao menos um CPF
+    # duplicado no dataset. Se não houver pares, tenta a regra por nome exato,
+    # que costuma gerar pares mesmo quando todos os CPFs são únicos.
+    em_blocking_rules = [
+        ("l.cpf = r.cpf",  "cpf"),
+        ("l.nome = r.nome", "nome"),
+    ]
+    trained = False
+    for rule_sql, rule_label in em_blocking_rules:
+        try:
+            log.info(f"  Estimando m-values (EM com bloqueio em {rule_label})...")
+            linker.training.estimate_parameters_using_expectation_maximisation(rule_sql)
+            trained = True
+            break
+        except EMTrainingException as exc:
+            log.warning(
+                f"  Regra de bloqueio '{rule_sql}' não gerou pares — tentando próxima. "
+                f"Detalhe: {exc}"
+            )
+
+    if not trained:
+        raise EMTrainingException(
+            "Nenhuma regra de bloqueio EM gerou pares suficientes para treinar o modelo. "
+            "Verifique se o dataset possui registros com CPF ou nome duplicados."
+        )
 
     log.info(f"  Predizendo pares (threshold={SPLINK_THRESHOLD})...")
     results = linker.inference.predict(threshold_match_probability=SPLINK_THRESHOLD)
