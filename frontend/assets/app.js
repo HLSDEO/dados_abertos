@@ -374,13 +374,10 @@ function mountGraphPage(cytoscape) {
             <button type="button" class="mode-option" data-mode="3d">3D</button>
           </div>
         </div>
-        <div class="field" style="grid-column: span 2;">
+        <div class="field" style="grid-column: span 4;">
           <label>&nbsp;</label>
           <button class="button" id="graph-load">Expandir</button>
-        </div>
-        <div class="field" style="grid-column: span 2;">
-          <label>&nbsp;</label>
-          <button class="button secondary" id="export-pdf-btn">Exportar PDF</button>
+          <button class="button" id="export-pdf-btn" style="background-color: #dc2626;">Exportar PDF</button>
         </div>
       </div>
     </section>>
