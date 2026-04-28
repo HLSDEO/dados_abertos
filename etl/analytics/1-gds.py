@@ -34,6 +34,7 @@ Uso:
 """
 
 import logging
+import os
 from neo4j import GraphDatabase
 from pipeline.lib import IngestionRun
 
@@ -41,6 +42,89 @@ log = logging.getLogger(__name__)
 
 _GRAPH_NAME        = "dados_abertos"
 _SIMILARITY_CUTOFF = 0.8
+_GDS_PROFILE       = os.environ.get("GDS_PROFILE", "full").strip().lower()
+
+_NODE_LABELS_FULL = [
+    "Empresa",
+    "Pessoa",
+    "Partner",
+    "Municipio",
+    "Estado",
+    "Parlamentar",
+    "Emenda",
+    "Sancao",
+    "Servidor",
+    "UnidadeGestora",
+    "Partido",
+    "Contrato",
+    "Licitacao",
+    "ItemResultado",
+    "Fornecedor",
+    "ContratoComprasNet",
+    "Empenho",
+    "Orgao",
+    "GrupoContratacao",
+]
+
+_NODE_LABELS_LEAN = [
+    "Empresa",
+    "Pessoa",
+    "Partner",
+    "Municipio",
+    "Estado",
+    "Parlamentar",
+    "Emenda",
+    "Sancao",
+    "Servidor",
+    "Partido",
+    "Orgao",
+]
+
+_RELATIONSHIPS_FULL = {
+    "SOCIO_DE": {"orientation": "NATURAL"},
+    "LOCALIZADA_EM": {"orientation": "NATURAL"},
+    "POSSUI_SANCAO": {"orientation": "NATURAL"},
+    "AUTORA_DE": {"orientation": "NATURAL"},
+    "DESTINADA_A": {"orientation": "NATURAL"},
+    "BENEFICIOU": {"orientation": "NATURAL"},
+    "DOOU_PARA": {"orientation": "NATURAL"},
+    "EH_SERVIDOR": {"orientation": "NATURAL"},
+    "LOTADO_EM": {"orientation": "NATURAL"},
+    "CANDIDATO_EM": {"orientation": "NATURAL"},
+    "POSSUI_DIVIDA": {"orientation": "NATURAL"},
+    "RECEBEU_EMPRESTIMO": {"orientation": "NATURAL"},
+    "GASTOU": {"orientation": "NATURAL"},
+    "FORNECEU": {"orientation": "NATURAL"},
+    "DECLAROU_BEM": {"orientation": "NATURAL"},
+    "MESMO_QUE": {"orientation": "UNDIRECTED"},
+    "PUBLICOU_LICITACAO": {"orientation": "NATURAL"},
+    "FIRMOU_CONTRATO": {"orientation": "NATURAL"},
+    "CONTRATOU": {"orientation": "NATURAL"},
+    "VINCULADO_A": {"orientation": "NATURAL"},
+    "DISPUTOU": {"orientation": "NATURAL"},
+    "DISPUTA_ITEM": {"orientation": "NATURAL"},
+    "PERTENCE_A": {"orientation": "NATURAL"},
+    "PAGO_POR": {"orientation": "NATURAL"},
+    "CELEBRADO_COM": {"orientation": "NATURAL"},
+    "REALIZA_ITEM": {"orientation": "NATURAL"},
+    "CELEBRA": {"orientation": "NATURAL"},
+    "REFERE_SE": {"orientation": "NATURAL"},
+    "LOCALIZADO_EM": {"orientation": "NATURAL"},
+}
+
+_RELATIONSHIPS_LEAN = {
+    "SOCIO_DE": {"orientation": "NATURAL"},
+    "LOCALIZADA_EM": {"orientation": "NATURAL"},
+    "POSSUI_SANCAO": {"orientation": "NATURAL"},
+    "AUTORA_DE": {"orientation": "NATURAL"},
+    "DESTINADA_A": {"orientation": "NATURAL"},
+    "BENEFICIOU": {"orientation": "NATURAL"},
+    "DOOU_PARA": {"orientation": "NATURAL"},
+    "EH_SERVIDOR": {"orientation": "NATURAL"},
+    "LOTADO_EM": {"orientation": "NATURAL"},
+    "CANDIDATO_EM": {"orientation": "NATURAL"},
+    "MESMO_QUE": {"orientation": "UNDIRECTED"},
+}
 
 
 # ── Projeção ──────────────────────────────────────────────────────────────────
@@ -59,61 +143,20 @@ RETURN graphName
 Q_PROJECT = """
 CALL gds.graph.project(
   $graph_name,
-  [
-    'Empresa',
-    'Pessoa',
-    'Partner',
-    'Municipio',
-    'Estado',
-    'Parlamentar',
-    'Emenda',
-    'Sancao',
-    'Servidor',
-    'UnidadeGestora',
-    'Partido',
-    'Contrato',
-    'Licitacao',
-    'ItemResultado',
-    'Fornecedor',
-    'ContratoComprasNet',
-    'Empenho',
-    'Orgao',
-    'GrupoContratacao'
-  ],
-  {
-    SOCIO_DE:           { orientation: 'NATURAL'    },
-    LOCALIZADA_EM:      { orientation: 'NATURAL'    },
-    POSSUI_SANCAO:      { orientation: 'NATURAL'    },
-    AUTORA_DE:          { orientation: 'NATURAL'    },
-    DESTINADA_A:        { orientation: 'NATURAL'    },
-    BENEFICIOU:         { orientation: 'NATURAL'    },
-    DOOU_PARA:          { orientation: 'NATURAL'    },
-    EH_SERVIDOR:        { orientation: 'NATURAL'    },
-    LOTADO_EM:          { orientation: 'NATURAL'    },
-    CANDIDATO_EM:       { orientation: 'NATURAL'    },
-    POSSUI_DIVIDA:      { orientation: 'NATURAL'    },
-    RECEBEU_EMPRESTIMO: { orientation: 'NATURAL'    },
-    GASTOU:             { orientation: 'NATURAL'    },
-    FORNECEU:           { orientation: 'NATURAL'    },
-    DECLAROU_BEM:       { orientation: 'NATURAL'    },
-    MESMO_QUE:          { orientation: 'UNDIRECTED' },
-    PUBLICOU_LICITACAO: { orientation: 'NATURAL'    },
-    FIRMOU_CONTRATO:    { orientation: 'NATURAL'    },
-    CONTRATOU:          { orientation: 'NATURAL'    },
-    VINCULADO_A:        { orientation: 'NATURAL'    },
-    DISPUTOU:           { orientation: 'NATURAL'    },
-    DISPUTA_ITEM:       { orientation: 'NATURAL'    },
-    PERTENCE_A:         { orientation: 'NATURAL'    },
-    PAGO_POR:           { orientation: 'NATURAL'    },
-    CELEBRADO_COM:      { orientation: 'NATURAL'    },
-    REALIZA_ITEM:       { orientation: 'NATURAL'    },
-    CELEBRA:            { orientation: 'NATURAL'    },
-    REFERE_SE:          { orientation: 'NATURAL'    },
-    LOCALIZADO_EM:      { orientation: 'NATURAL'    }
-  }
+  $node_labels,
+  $relationships
 )
 YIELD graphName, nodeCount, relationshipCount
 RETURN graphName, nodeCount, relationshipCount
+"""
+
+Q_PROJECT_ESTIMATE = """
+CALL gds.graph.project.estimate(
+  $node_labels,
+  $relationships
+)
+YIELD nodeCount, relationshipCount, requiredMemory
+RETURN nodeCount, relationshipCount, requiredMemory
 """
 
 
@@ -190,6 +233,12 @@ def _run(session, query: str, params: dict = None, label: str = ""):
     return record
 
 
+def _projection_config():
+    if _GDS_PROFILE == "lean":
+        return _NODE_LABELS_LEAN, _RELATIONSHIPS_LEAN
+    return _NODE_LABELS_FULL, _RELATIONSHIPS_FULL
+
+
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
 def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
@@ -202,8 +251,32 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             log.info("  Removendo projeção anterior (se existir)...")
             session.run(Q_DROP_IF_EXISTS, graph_name=_GRAPH_NAME)
 
+            node_labels, relationships = _projection_config()
+            log.info(
+                f"  Perfil GDS: {_GDS_PROFILE} "
+                f"(labels={len(node_labels)}, rels={len(relationships)})"
+            )
+            log.info("  Estimando memória da projeção...")
+            estimate = _run(
+                session,
+                Q_PROJECT_ESTIMATE,
+                {
+                    "node_labels": node_labels,
+                    "relationships": relationships,
+                },
+                "estimativa",
+            )
+
             log.info(f"  Projetando grafo '{_GRAPH_NAME}' em memória...")
-            record = _run(session, Q_PROJECT, {"graph_name": _GRAPH_NAME})
+            record = _run(
+                session,
+                Q_PROJECT,
+                {
+                    "graph_name": _GRAPH_NAME,
+                    "node_labels": node_labels,
+                    "relationships": relationships,
+                },
+            )
             if record:
                 node_count = record["nodeCount"]
                 log.info(
