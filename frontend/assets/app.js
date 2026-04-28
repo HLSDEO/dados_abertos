@@ -858,7 +858,7 @@ function mountProfilePage(cytoscape) {
           </div>
           <div class="link-row" style="margin-top:18px;">
             <a class="button secondary" href="/grafo.html?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1">Explorador de grafo</a>
-            ${tipo === "Empresa" ? `<a class="button subtle" href="/corrupcao.html?cnpj=${encodeURIComponent(id)}">Padrões por estado</a>` : ""}
+            ${tipo === "Empresa" ? `<a class="button subtle" href="/corrupcao.html?cnpj=${encodeURIComponent(id)}">Padrões de corrupção</a>` : ""}
           </div>
         </section>
         <section class="split">
