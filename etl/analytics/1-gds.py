@@ -35,14 +35,18 @@ Uso:
 
 import logging
 import os
+import re
 from neo4j import GraphDatabase
+from neo4j.exceptions import ClientError
 from pipeline.lib import IngestionRun
 
 log = logging.getLogger(__name__)
 
 _GRAPH_NAME        = "dados_abertos"
 _SIMILARITY_CUTOFF = 0.8
-_GDS_PROFILE       = os.environ.get("GDS_PROFILE", "full").strip().lower()
+_GDS_PROFILE       = os.environ.get("GDS_PROFILE", "auto").strip().lower()
+_GDS_MAX_MEMORY_GB = float(os.environ.get("GDS_MAX_MEMORY_GB", "0") or "0")
+_BETWEENNESS_SAMPLING_SIZE = int(os.environ.get("GDS_BETWEENNESS_SAMPLING_SIZE", "1000"))
 
 _NODE_LABELS_FULL = [
     "Empresa",
@@ -78,6 +82,15 @@ _NODE_LABELS_LEAN = [
     "Servidor",
     "Partido",
     "Orgao",
+]
+
+_NODE_LABELS_CORE = [
+    "Empresa",
+    "Pessoa",
+    "Partner",
+    "Municipio",
+    "Estado",
+    "Sancao",
 ]
 
 _RELATIONSHIPS_FULL = {
@@ -123,6 +136,13 @@ _RELATIONSHIPS_LEAN = {
     "EH_SERVIDOR": {"orientation": "NATURAL"},
     "LOTADO_EM": {"orientation": "NATURAL"},
     "CANDIDATO_EM": {"orientation": "NATURAL"},
+    "MESMO_QUE": {"orientation": "UNDIRECTED"},
+}
+
+_RELATIONSHIPS_CORE = {
+    "SOCIO_DE": {"orientation": "NATURAL"},
+    "LOCALIZADA_EM": {"orientation": "NATURAL"},
+    "POSSUI_SANCAO": {"orientation": "NATURAL"},
     "MESMO_QUE": {"orientation": "UNDIRECTED"},
 }
 
@@ -188,7 +208,7 @@ RETURN nodePropertiesWritten, ranIterations, didConverge
 Q_BETWEENNESS = """
 CALL gds.betweenness.write($graph_name, {
   writeProperty: 'gds_betweenness',
-  samplingSize:  1000
+  samplingSize:  $sampling_size
 })
 YIELD nodePropertiesWritten, minimumScore, maximumScore, scoreSum
 RETURN nodePropertiesWritten, minimumScore, maximumScore, scoreSum
@@ -236,7 +256,32 @@ def _run(session, query: str, params: dict = None, label: str = ""):
 def _projection_config():
     if _GDS_PROFILE == "lean":
         return _NODE_LABELS_LEAN, _RELATIONSHIPS_LEAN
+    if _GDS_PROFILE == "core":
+        return _NODE_LABELS_CORE, _RELATIONSHIPS_CORE
     return _NODE_LABELS_FULL, _RELATIONSHIPS_FULL
+
+
+def _candidate_profiles():
+    if _GDS_PROFILE in {"full", "lean", "core"}:
+        return [_GDS_PROFILE]
+    return ["full", "lean", "core"]
+
+
+def _parse_required_memory_gib(required_memory: str) -> float:
+    if not required_memory:
+        return 0.0
+    m = re.search(r"([\d.]+)\s*(KiB|MiB|GiB|TiB)", required_memory)
+    if not m:
+        return 0.0
+    value = float(m.group(1))
+    unit = m.group(2)
+    factor = {
+        "KiB": 1 / (1024 * 1024),
+        "MiB": 1 / 1024,
+        "GiB": 1,
+        "TiB": 1024,
+    }.get(unit, 1)
+    return value * factor
 
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
@@ -251,32 +296,64 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             log.info("  Removendo projeção anterior (se existir)...")
             session.run(Q_DROP_IF_EXISTS, graph_name=_GRAPH_NAME)
 
-            node_labels, relationships = _projection_config()
+            selected_profile = None
+            record = None
+            profile_map = {
+                "full": (_NODE_LABELS_FULL, _RELATIONSHIPS_FULL),
+                "lean": (_NODE_LABELS_LEAN, _RELATIONSHIPS_LEAN),
+                "core": (_NODE_LABELS_CORE, _RELATIONSHIPS_CORE),
+            }
             log.info(
-                f"  Perfil GDS: {_GDS_PROFILE} "
-                f"(labels={len(node_labels)}, rels={len(relationships)})"
+                f"  Perfil GDS solicitado: {_GDS_PROFILE} "
+                f"(max_memory_gb={_GDS_MAX_MEMORY_GB})"
             )
-            log.info("  Estimando memória da projeção...")
-            estimate = _run(
-                session,
-                Q_PROJECT_ESTIMATE,
-                {
-                    "node_labels": node_labels,
-                    "relationships": relationships,
-                },
-                "estimativa",
-            )
-
-            log.info(f"  Projetando grafo '{_GRAPH_NAME}' em memória...")
-            record = _run(
-                session,
-                Q_PROJECT,
-                {
-                    "graph_name": _GRAPH_NAME,
-                    "node_labels": node_labels,
-                    "relationships": relationships,
-                },
-            )
+            for profile in _candidate_profiles():
+                node_labels, relationships = profile_map[profile]
+                log.info(
+                    f"  Tentando perfil '{profile}' "
+                    f"(labels={len(node_labels)}, rels={len(relationships)})"
+                )
+                estimate = _run(
+                    session,
+                    Q_PROJECT_ESTIMATE,
+                    {
+                        "node_labels": node_labels,
+                        "relationships": relationships,
+                    },
+                    "estimativa",
+                )
+                required_gib = _parse_required_memory_gib(
+                    str(estimate["requiredMemory"]) if estimate else ""
+                )
+                if _GDS_MAX_MEMORY_GB > 0 and required_gib > _GDS_MAX_MEMORY_GB:
+                    log.warning(
+                        f"    Pulando perfil '{profile}': estimativa {required_gib:.2f} GiB "
+                        f"acima do limite configurado ({_GDS_MAX_MEMORY_GB:.2f} GiB)"
+                    )
+                    continue
+                try:
+                    log.info(f"  Projetando grafo '{_GRAPH_NAME}' em memória...")
+                    record = _run(
+                        session,
+                        Q_PROJECT,
+                        {
+                            "graph_name": _GRAPH_NAME,
+                            "node_labels": node_labels,
+                            "relationships": relationships,
+                        },
+                    )
+                    selected_profile = profile
+                    break
+                except ClientError as exc:
+                    log.warning(
+                        f"    Falha no perfil '{profile}', tentando próximo: {exc}"
+                    )
+            if not selected_profile or not record:
+                raise RuntimeError(
+                    "Nenhum perfil GDS coube na memória disponível. "
+                    "Ajuste NEO4J_HEAP/PAGECACHE ou reduza GDS_MAX_MEMORY_GB."
+                )
+            log.info(f"  Perfil selecionado para execução: {selected_profile}")
             if record:
                 node_count = record["nodeCount"]
                 log.info(
@@ -292,7 +369,12 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str):
             _run(session, Q_PAGERANK, {"graph_name": _GRAPH_NAME}, "resultado")
 
             log.info("  [3/4] Betweenness — identificando intermediários...")
-            _run(session, Q_BETWEENNESS, {"graph_name": _GRAPH_NAME}, "resultado")
+            _run(
+                session,
+                Q_BETWEENNESS,
+                {"graph_name": _GRAPH_NAME, "sampling_size": _BETWEENNESS_SAMPLING_SIZE},
+                "resultado",
+            )
 
             log.info(f"  [4/4] Node Similarity — score >= {_SIMILARITY_CUTOFF}...")
             r = _run(session, Q_SIMILARITY,

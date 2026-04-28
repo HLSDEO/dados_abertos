@@ -103,6 +103,9 @@ services:
       WORKERS: "${WORKERS:-4}"
       NEO4J_BATCH: "${NEO4J_BATCH:-2000}"
       PIPELINE_WORKERS: "${PIPELINE_WORKERS:-2}"
+      GDS_PROFILE: "${GDS_PROFILE:-auto}"
+      GDS_MAX_MEMORY_GB: "${GDS_MAX_MEMORY_GB:-0}"
+      GDS_BETWEENNESS_SAMPLING_SIZE: "${GDS_BETWEENNESS_SAMPLING_SIZE:-1000}"
       TZ: America/Sao_Paulo
     volumes:
       - ./etl/data:/app/data
