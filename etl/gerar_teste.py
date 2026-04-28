@@ -263,10 +263,290 @@ def generate_pncp_data():
     })
     empenhos.to_csv(os.path.join(pncp_dir, "empenhos.csv"), index=False, sep=';', encoding='utf-8-sig')
 
+def generate_tesouro_transparente_data():
+    print("Gerando dados do Tesouro Transparente...")
+    tt_dir = os.path.join(DATA_DIR, "tesouro_transparente")
+    os.makedirs(tt_dir, exist_ok=True)
+
+    emendas = pd.DataFrame({
+        'ano': ['2024', '2024', '2024'],
+        'codigo_emenda': ['E001', 'E002', 'E003'],
+        'tipo_emenda': ['INDIVIDUAL', 'BANCADA', 'INDIVIDUAL'],
+        'autor': ['POLITICO INFLUENTE', 'POLITICO INFLUENTE', 'OUTRO PARLAMENTAR'],
+        'funcao': ['SAUDE', 'EDUCACAO', 'INFRAESTRUTURA'],
+        'subfuncao': ['ATENCAO BASICA', 'ENSINO FUNDAMENTAL', 'TRANSPORTE'],
+        'programa': ['PROGRAMA SAUDE', 'PROGRAMA EDUCACAO', 'PROGRAMA OBRAS'],
+        'acao': ['ACAO 1', 'ACAO 2', 'ACAO 3'],
+        'localidade': ['BRASILIA', 'BRASILIA', 'GOIANIA'],
+        'uf': ['DF', 'DF', 'GO'],
+        'valor_empenhado': ['1000000.00', '500000.00', '2000000.00'],
+        'valor_liquidado': ['800000.00', '400000.00', '1500000.00'],
+        'valor_pago': ['800000.00', '400000.00', '1200000.00'],
+        'fonte_nome': ['Tesouro Transparente'] * 3,
+        'fonte_url': ['https://www.tesourotransparente.gov.br'] * 3,
+        'fonte_descricao': ['Emendas parlamentares'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    emendas.to_csv(
+        os.path.join(tt_dir, "emendas.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_servidores_cgu_data():
+    print("Gerando dados de servidores (CGU)...")
+    cgu_dir = os.path.join(DATA_DIR, "cgu")
+    os.makedirs(cgu_dir, exist_ok=True)
+
+    servidores = pd.DataFrame({
+        'cpf': ['11111111111', '22222222222', '33333333333'],
+        'nome': ['JOAO SILVA', 'MARIA SOUZA', 'CARLOS OLIVEIRA'],
+        'orgao': ['MINISTERIO DA SAUDE', 'MINISTERIO DA EDUCACAO', 'PREFEITURA GOIANIA'],
+        'tipo_vinculo': ['EFETIVO', 'COMISSIONADO', 'TEMPORARIO'],
+        'cargo': ['ANALISTA', 'ASSESSOR', 'TECNICO'],
+        'funcao': ['GESTAO', 'ADMINISTRATIVO', 'OPERACIONAL'],
+        'uf_exercicio': ['DF', 'DF', 'GO'],
+        'municipio_exercicio': ['BRASILIA', 'BRASILIA', 'GOIANIA'],
+        'remuneracao_bruta': ['12000.00', '8000.00', '5000.00'],
+        'remuneracao_liquida': ['9500.00', '6500.00', '4200.00'],
+        'data_ingresso': ['2015-03-10', '2019-07-22', '2021-01-05'],
+        'situacao': ['ATIVO', 'ATIVO', 'ATIVO'],
+
+        # Metadados (padrão do teu projeto)
+        'fonte_nome': ['CGU - Portal da Transparência'] * 3,
+        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
+        'fonte_descricao': ['Servidores públicos federais'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    servidores.to_csv(
+        os.path.join(cgu_dir, "servidores.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_sancoes_cgu_data():
+    print("Gerando dados de sanções (CGU)...")
+    cgu_dir = os.path.join(DATA_DIR, "cgu")
+    os.makedirs(cgu_dir, exist_ok=True)
+
+    sancoes = pd.DataFrame({
+        'cpf_cnpj': ['11111111111', '12345678000199', '22222222222'],
+        'tipo_pessoa': ['FISICA', 'JURIDICA', 'FISICA'],
+        'nome_sancionado': ['JOAO SILVA', 'EMPRESA XYZ LTDA', 'MARIA SOUZA'],
+        'orgao_sancionador': ['CGU', 'MINISTERIO DA SAUDE', 'CGU'],
+        'tipo_sancao': ['DEMITIDO', 'SUSPENSAO', 'DESTITUICAO'],
+        'descricao_sancao': [
+            'Demissão por improbidade administrativa',
+            'Suspensão por irregularidade em contrato',
+            'Destituição de cargo comissionado'
+        ],
+        'data_inicio_sancao': ['2022-05-10', '2023-08-15', '2021-11-20'],
+        'data_fim_sancao': ['2027-05-10', '2025-08-15', '2024-11-20'],
+        'situacao': ['ATIVA', 'ATIVA', 'ENCERRADA'],
+        'uf': ['DF', 'SP', 'DF'],
+        'municipio': ['BRASILIA', 'SAO PAULO', 'BRASILIA'],
+
+        # Metadados padrão
+        'fonte_nome': ['CGU - Portal da Transparência'] * 3,
+        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
+        'fonte_descricao': ['Cadastro de sanções administrativas'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    sancoes.to_csv(
+        os.path.join(cgu_dir, "sancoes.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_pgfn_data():
+    print("Gerando dados da PGFN (Dívida Ativa)...")
+    pgfn_dir = os.path.join(DATA_DIR, "pgfn")
+    os.makedirs(pgfn_dir, exist_ok=True)
+
+    dividas = pd.DataFrame({
+        'cpf_cnpj': ['12345678000199', '98765432000188', '11111111111'],
+        'tipo_pessoa': ['JURIDICA', 'JURIDICA', 'FISICA'],
+        'nome_devedor': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'JOAO SILVA'],
+        'numero_inscricao': ['DAU001', 'DAU002', 'DAU003'],
+        'tipo_debito': ['TRIBUTARIO', 'NAO_TRIBUTARIO', 'TRIBUTARIO'],
+        'situacao': ['ATIVA', 'PARCELADA', 'ATIVA'],
+        'valor_consolidado': ['1500000.00', '300000.00', '50000.00'],
+        'data_inscricao': ['2020-06-15', '2021-09-10', '2019-03-22'],
+        'uf': ['SP', 'RJ', 'DF'],
+        'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BRASILIA'],
+
+        # Metadados padrão
+        'fonte_nome': ['PGFN - Dívida Ativa da União'] * 3,
+        'fonte_url': ['https://www.gov.br/pgfn'] * 3,
+        'fonte_descricao': ['Cadastro de débitos inscritos em dívida ativa'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    dividas.to_csv(
+        os.path.join(pgfn_dir, "divida_ativa.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_cpgf_data():
+    print("Gerando dados de CPGF (Cartão de Pagamento do Governo Federal)...")
+    cpgf_dir = os.path.join(DATA_DIR, "cpgf")
+    os.makedirs(cpgf_dir, exist_ok=True)
+
+    gastos = pd.DataFrame({
+        'cpf_portador': ['11111111111', '22222222222', '11111111111'],
+        'nome_portador': ['JOAO SILVA', 'MARIA SOUZA', 'JOAO SILVA'],
+        'orgao': ['MINISTERIO DA SAUDE', 'MINISTERIO DA EDUCACAO', 'MINISTERIO DA SAUDE'],
+        'uf': ['DF', 'DF', 'DF'],
+        'municipio': ['BRASILIA', 'BRASILIA', 'BRASILIA'],
+        'data_transacao': ['2024-01-10', '2024-02-15', '2024-03-05'],
+        'estabelecimento': ['POSTO DE COMBUSTIVEL XPTO', 'HOTEL BRASILIA', 'RESTAURANTE CENTRAL'],
+        'cnpj_estabelecimento': ['12345678000100', '22345678000100', '32345678000100'],
+        'descricao_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'ALIMENTACAO'],
+        'valor': ['500.00', '1200.00', '150.00'],
+
+        # Metadados padrão
+        'fonte_nome': ['Portal da Transparência - CPGF'] * 3,
+        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
+        'fonte_descricao': ['Gastos com Cartão de Pagamento do Governo Federal'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    gastos.to_csv(
+        os.path.join(cpgf_dir, "gastos_cpgf.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_camara_data():
+    print("Gerando dados da Câmara dos Deputados (CEAP)...")
+    camara_dir = os.path.join(DATA_DIR, "camara")
+    os.makedirs(camara_dir, exist_ok=True)
+
+    despesas = pd.DataFrame({
+        'ano': ['2024', '2024', '2024'],
+        'mes': ['01', '02', '03'],
+        'cpf_deputado': ['11111111111', '22222222222', '11111111111'],
+        'nome_deputado': ['DEP. JOAO SILVA', 'DEP. MARIA SOUZA', 'DEP. JOAO SILVA'],
+        'partido': ['ABC', 'XYZ', 'ABC'],
+        'uf': ['SP', 'RJ', 'SP'],
+        'fornecedor': ['EMPRESA COMBUSTIVEL LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
+        'cnpj_fornecedor': ['12345678000100', '22345678000100', '32345678000100'],
+        'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
+        'descricao': ['Abastecimento veículo', 'Hospedagem em viagem oficial', 'Material gráfico'],
+        'valor_liquido': ['800.00', '1500.00', '600.00'],
+        'data_emissao': ['2024-01-12', '2024-02-18', '2024-03-22'],
+
+        # Metadados padrão
+        'fonte_nome': ['Câmara dos Deputados'] * 3,
+        'fonte_url': ['https://dadosabertos.camara.leg.br'] * 3,
+        'fonte_descricao': ['Despesas CEAP - Cota Parlamentar'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    despesas.to_csv(
+        os.path.join(camara_dir, "despesas_ceap.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_bndes_data():
+    print("Gerando dados do BNDES (operações de crédito)...")
+    bndes_dir = os.path.join(DATA_DIR, "bndes")
+    os.makedirs(bndes_dir, exist_ok=True)
+
+    operacoes = pd.DataFrame({
+        'cnpj_beneficiario': ['12345678000199', '98765432000188', '22334455000166'],
+        'nome_beneficiario': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'INDUSTRIA BRASIL LTDA'],
+        'uf': ['SP', 'RJ', 'MG'],
+        'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BELO HORIZONTE'],
+        'setor': ['INFRAESTRUTURA', 'INDUSTRIA', 'ENERGIA'],
+        'programa': ['FINEM', 'BNDES AUTOMATICO', 'FINAME'],
+        'data_contratacao': ['2021-04-10', '2022-07-15', '2023-01-20'],
+        'valor_contratado': ['5000000.00', '2000000.00', '7500000.00'],
+        'valor_desembolsado': ['3000000.00', '1500000.00', '5000000.00'],
+        'situacao': ['ATIVA', 'ATIVA', 'ENCERRADA'],
+
+        # Metadados padrão
+        'fonte_nome': ['BNDES - Transparência'] * 3,
+        'fonte_url': ['https://www.bndes.gov.br'] * 3,
+        'fonte_descricao': ['Operações de crédito e financiamento'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    operacoes.to_csv(
+        os.path.join(bndes_dir, "operacoes_credito.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
+def generate_senado_data():
+    print("Gerando dados do Senado Federal (CEAP)...")
+    senado_dir = os.path.join(DATA_DIR, "senado")
+    os.makedirs(senado_dir, exist_ok=True)
+
+    despesas = pd.DataFrame({
+        'ano': ['2024', '2024', '2024'],
+        'mes': ['01', '02', '03'],
+        'cpf_senador': ['11111111111', '22222222222', '11111111111'],
+        'nome_senador': ['SEN. JOAO SILVA', 'SEN. MARIA SOUZA', 'SEN. JOAO SILVA'],
+        'partido': ['ABC', 'XYZ', 'ABC'],
+        'uf': ['SP', 'RJ', 'SP'],
+        'fornecedor': ['AUTO POSTO BRASIL LTDA', 'HOTEL CENTRAL LTDA', 'AGENCIA PUBLICIDADE'],
+        'cnpj_fornecedor': ['12345678000100', '22345678000100', '32345678000100'],
+        'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
+        'descricao': [
+            'Abastecimento de veículo oficial',
+            'Hospedagem em viagem oficial',
+            'Serviços de publicidade'
+        ],
+        'valor': ['900.00', '1800.00', '700.00'],
+        'data_emissao': ['2024-01-15', '2024-02-20', '2024-03-25'],
+
+        # Metadados padrão
+        'fonte_nome': ['Senado Federal'] * 3,
+        'fonte_url': ['https://adm.senado.gov.br'] * 3,
+        'fonte_descricao': ['Despesas CEAP - Cota Parlamentar'] * 3,
+        'fonte_licenca': ['CC-BY 4.0'] * 3,
+        'fonte_coletado_em': ['2024-01-01'] * 3
+    })
+
+    despesas.to_csv(
+        os.path.join(senado_dir, "despesas_ceap.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8-sig'
+    )
+
 if __name__ == "__main__":
-    generate_ibge_data()
-    generate_cnpj_data()
-    generate_tse_data()
-    generate_cgu_data()
-    generate_pncp_data()
+    generate_ibge_data() #ibge
+    generate_cnpj_data() #cnpj
+    generate_tse_data() #tse
+    generate_cgu_data() #emendas_cgu
+    generate_tesouro_transparente_data() #tesouro_transparente
+    generate_servidores_cgu_data() #servidores_cgu
+    generate_sancoes_cgu_data() #sancoes_cgu
+    generate_pncp_data() #pncp
+    generate_pgfn_data() #pgfn
+    generate_cpgf_data() #cpgf
+    generate_camara_data() #camara
+    generate_bndes_data() #bndes
+    generate_senado_data() #senado
     print("\nDados sintéticos gerados com sucesso na pasta 'etl/data'!")
