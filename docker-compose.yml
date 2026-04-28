@@ -104,12 +104,13 @@ services:
       NEO4J_BATCH: "${NEO4J_BATCH:-2000}"
       PIPELINE_WORKERS: "${PIPELINE_WORKERS:-2}"
       GDS_PROFILE: "${GDS_PROFILE:-auto}"
-      GDS_MAX_MEMORY_GB: "${GDS_MAX_MEMORY_GB:-0}"
+      GDS_MAX_MEMORY_GB: "${GDS_MAX_MEMORY_GB:-4.0}"
       GDS_BETWEENNESS_SAMPLING_SIZE: "${GDS_BETWEENNESS_SAMPLING_SIZE:-1000}"
       TZ: America/Sao_Paulo
     volumes:
+      - ./etl:/app
       - ./etl/data:/app/data
-    shm_size: "4gb"
+    shm_size: "8gb"
 
 volumes:
   neo4j_data:
