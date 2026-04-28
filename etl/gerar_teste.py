@@ -300,37 +300,53 @@ def generate_tesouro_transparente_data():
 
 def generate_servidores_cgu_data():
     print("Gerando dados de servidores (CGU)...")
-    cgu_dir = os.path.join(DATA_DIR, "cgu")
+    cgu_dir = os.path.join(DATA_DIR, "servidores")
     os.makedirs(cgu_dir, exist_ok=True)
 
-    servidores = pd.DataFrame({
-        'cpf': ['11111111111', '22222222222', '33333333333'],
-        'nome': ['JOAO SILVA', 'MARIA SOUZA', 'CARLOS OLIVEIRA'],
-        'orgao': ['MINISTERIO DA SAUDE', 'MINISTERIO DA EDUCACAO', 'PREFEITURA GOIANIA'],
-        'tipo_vinculo': ['EFETIVO', 'COMISSIONADO', 'TEMPORARIO'],
-        'cargo': ['ANALISTA', 'ASSESSOR', 'TECNICO'],
-        'funcao': ['GESTAO', 'ADMINISTRATIVO', 'OPERACIONAL'],
-        'uf_exercicio': ['DF', 'DF', 'GO'],
-        'municipio_exercicio': ['BRASILIA', 'BRASILIA', 'GOIANIA'],
-        'remuneracao_bruta': ['12000.00', '8000.00', '5000.00'],
-        'remuneracao_liquida': ['9500.00', '6500.00', '4200.00'],
-        'data_ingresso': ['2015-03-10', '2019-07-22', '2021-01-05'],
-        'situacao': ['ATIVO', 'ATIVO', 'ATIVO'],
-
-        # Metadados (padrão do teu projeto)
-        'fonte_nome': ['CGU - Portal da Transparência'] * 3,
-        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
-        'fonte_descricao': ['Servidores públicos federais'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
+    cadastro = pd.DataFrame({
+        "id_servidor": ["1", "2", "3"],
+        "cpf": ["11111111111", "22222222222", "33333333333"],
+        "nome": ["JOAO SILVA", "MARIA SOUZA", "CARLOS OLIVEIRA"],
+        "cargo": ["ANALISTA", "ASSESSOR", "TECNICO"],
+        "classe": ["A", "B", "C"],
+        "org_lotacao": ["MINISTERIO DA SAUDE", "MINISTERIO DA EDUCACAO", "PREFEITURA GOIANIA"],
+        "org_exercicio": ["MINISTERIO DA SAUDE", "MINISTERIO DA EDUCACAO", "PREFEITURA GOIANIA"],
+        "uorg_lotacao": ["U1", "U2", "U3"],
+        "uorg_exercicio": ["U1", "U2", "U3"],
+        "situacao_vinculo": ["ATIVO", "ATIVO", "ATIVO"],
+        "regime_juridico": ["ESTATUTARIO"] * 3,
+        "tipo_vinculo": ["EFETIVO", "COMISSIONADO", "TEMPORARIO"],
+        "jornada_trabalho": ["40h"] * 3,
+        "data_ingresso_orgao": ["2015-03-10", "2019-07-22", "2021-01-05"],
+        "data_ingresso_servico": ["2015-03-10", "2019-07-22", "2021-01-05"],
+        "uf_exercicio": ["DF", "DF", "GO"],
+        "municipio_exercicio": ["BRASILIA", "BRASILIA", "GOIANIA"],
+        "cd_uasg": ["1001", "1002", "1003"],
+        "fonte_categoria": ["CGU"] * 3,
+        "fonte_nome": ["CGU"] * 3,
+        "fonte_url": ["https://portaldatransparencia.gov.br"] * 3
     })
 
-    servidores.to_csv(
-        os.path.join(cgu_dir, "servidores.csv"),
-        index=False,
-        sep=';',
-        encoding='utf-8-sig'
-    )
+    cadastro.to_csv(cgu_dir / "cadastro.csv", index=False)
+
+    remuneracao = pd.DataFrame({
+        "id_servidor": ["1", "2", "3"],
+        "ano": ["2024", "2024", "2024"],
+        "mes": ["01", "01", "01"],
+        "fonte_categoria": ["CGU"] * 3,
+        "remuneracao_bruta": ["12000", "8000", "5000"],
+        "remuneracao_liquida": ["9500", "6500", "4200"],
+        "total_bruto": ["12000", "8000", "5000"],
+        "irrf": ["1000", "700", "300"],
+        "pss_rpps": ["500", "400", "200"],
+        "abate_teto": ["0", "0", "0"],
+        "gratificacao_natalina": ["0", "0", "0"],
+        "ferias": ["0", "0", "0"],
+        "verbas_indenizatorias": ["0", "0", "0"],
+        "outras_verbas": ["0", "0", "0"]
+    })
+
+    remuneracao.to_csv(cgu_dir / "remuneracao.csv", index=False)
 
 def generate_sancoes_cgu_data():
     print("Gerando dados de sanções CGU (compatível com pipeline)...")
@@ -586,10 +602,11 @@ def generate_senado_data():
 if __name__ == "__main__":
     generate_ibge_data() #ibge
     generate_cnpj_data() #cnpj
+    #siafi
+    generate_servidores_cgu_data() #servidores_cgu
     generate_tse_data() #tse
     generate_cgu_data() #emendas_cgu
     generate_tesouro_transparente_data() #tesouro_transparente
-    generate_servidores_cgu_data() #servidores_cgu
     generate_sancoes_cgu_data() #sancoes_cgu
     generate_pncp_data() #pncp
     generate_pgfn_data() #pgfn
