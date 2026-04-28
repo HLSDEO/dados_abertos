@@ -342,39 +342,39 @@ function mountGraphPage(cytoscape) {
       title: "Expansão manual de relacionamentos",
       subtitle: "Entre com a entidade raiz e navegue pelo grafo sem passar por uma landing page. A selecao aqui fica focada em operacao e leitura.",
     })}
-    <section class="card">
-      <div class="toolbar">
-        <div class="field" style="grid-column: span 3;">
-          <label>Label</label>
-          <select id="graph-label">
-            <option>Empresa</option>
-            <option>Pessoa</option>
-            <option>Parlamentar</option>
-            <option>Municipio</option>
-            <option>Estado</option>
-          </select>
-        </div>
-        <div class="field" style="grid-column: span 5;">
-          <label>Identificador</label>
-          <input id="graph-id" placeholder="CPF, CNPJ basico, id parlamentar, UF..." />
-        </div>
-        <div class="field" style="grid-column: span 2;">
-          <label>Visualizacao</label>
-          <div class="mode-toggle">
-            <button type="button" class="mode-option active" data-mode="2d">2D</button>
-            <button type="button" class="mode-option" data-mode="3d">3D</button>
-          </div>
-        </div>
-        <div class="field" style="grid-column: span 2;">
-          <label>&nbsp;</label>
-          <button class="button" id="graph-load">Expandir</button>
-        </div>
-        <div class="field" style="grid-column: span 2;">
-          <label>&nbsp;</label>
-          <button class="button secondary" id="export-pdf-btn">Exportar PDF</button>
-        </div>
-      </div>
-    </section>
+     <section class="card">
+       <div class="toolbar">
+         <div class="field" style="grid-column: span 3;">
+           <label>Label</label>
+           <select id="graph-label">
+             <option>Empresa</option>
+             <option>Pessoa</option>
+             <option>Parlamentar</option>
+             <option>Municipio</option>
+             <option>Estado</option>
+           </select>
+         </div>
+         <div class="field" style="grid-column: span 5;">
+           <label>Identificador</label>
+           <input id="graph-id" placeholder="CPF, CNPJ basico, id parlamentar, UF..." />
+         </div>
+         <div class="field" style="grid-column: span 2;">
+           <label>Visualizacao</label>
+           <div class="mode-toggle">
+             <button type="button" class="mode-option active" data-mode="2d">2D</button>
+             <button type="button" class="mode-option" data-mode="3d">3D</button>
+           </div>
+         </div>
+         <div class="field" style="grid-column: span 1;">
+           <label>&nbsp;</label>
+           <button class="button" id="graph-load">Expandir</button>
+         </div>
+         <div class="field" style="grid-column: span 1;">
+           <label>&nbsp;</label>
+           <button class="button" id="export-pdf-btn" style="background-color: #dc2626;">Exportar PDF</button>
+         </div>
+       </div>
+     </section>
     <section id="graph-layout" class="split graph-layout">
       <div class="card">${makeGraphShell()}</div>
       <div class="stack">
