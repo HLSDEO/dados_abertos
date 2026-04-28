@@ -401,35 +401,31 @@ def generate_pgfn_data():
         encoding='utf-8-sig'
     )
 
-def generate_cpgf_data():
-    print("Gerando dados de CPGF (Cartão de Pagamento do Governo Federal)...")
-    cpgf_dir = os.path.join(DATA_DIR, "cpgf")
-    os.makedirs(cpgf_dir, exist_ok=True)
+def generate_pgfn_data():
+    print("Gerando dados da PGFN (compatível com pipeline)...")
+    pgfn_dir = os.path.join(DATA_DIR, "pgfn")
+    os.makedirs(pgfn_dir, exist_ok=True)
 
-    gastos = pd.DataFrame({
-        'cpf_portador': ['11111111111', '22222222222', '11111111111'],
-        'nome_portador': ['JOAO SILVA', 'MARIA SOUZA', 'JOAO SILVA'],
-        'orgao': ['MINISTERIO DA SAUDE', 'MINISTERIO DA EDUCACAO', 'MINISTERIO DA SAUDE'],
-        'uf': ['DF', 'DF', 'DF'],
-        'municipio': ['BRASILIA', 'BRASILIA', 'BRASILIA'],
-        'data_transacao': ['2024-01-10', '2024-02-15', '2024-03-05'],
-        'estabelecimento': ['POSTO DE COMBUSTIVEL XPTO', 'HOTEL BRASILIA', 'RESTAURANTE CENTRAL'],
-        'cnpj_estabelecimento': ['12345678000100', '22345678000100', '32345678000100'],
-        'descricao_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'ALIMENTACAO'],
-        'valor': ['500.00', '1200.00', '150.00'],
-
-        # Metadados padrão
-        'fonte_nome': ['Portal da Transparência - CPGF'] * 3,
-        'fonte_url': ['https://portaldatransparencia.gov.br'] * 3,
-        'fonte_descricao': ['Gastos com Cartão de Pagamento do Governo Federal'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
+    df = pd.DataFrame({
+        'cpf_cnpj': ['12345678000199', '98765432000188', '11111111111'],
+        'nome_devedor': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'JOAO SILVA'],
+        'numero_inscricao': ['DAU001', 'DAU002', 'DAU003'],
+        'tipo_credito': ['TRIBUTARIO', 'NAO_TRIBUTARIO', 'TRIBUTARIO'],
+        'receita_principal': ['IRPJ', 'MULTA', 'INSS'],
+        'situacao': ['ATIVA', 'PARCELADA', 'ATIVA'],
+        'situacao_juridica': ['REGULAR', 'REGULAR', 'IRREGULAR'],
+        'valor_consolidado': ['1500000.00', '300000.00', '50000.00'],
+        'data_inscricao': ['2020-06-15', '2021-09-10', '2019-03-22'],
+        'indicador_ajuizado': ['SIM', 'NAO', 'SIM'],
+        'uf_devedor': ['SP', 'RJ', 'DF'],
+        'municipio_devedor': ['SAO PAULO', 'RIO DE JANEIRO', 'BRASILIA'],
+        'fonte_nome': ['PGFN'] * 3
     })
 
-    gastos.to_csv(
-        os.path.join(cpgf_dir, "gastos_cpgf.csv"),
+    df.to_csv(
+        os.path.join(pgfn_dir, "divida_ativa_2024.csv"),
         index=False,
-        sep=';',
+        sep=',',
         encoding='utf-8-sig'
     )
 
@@ -580,7 +576,7 @@ if __name__ == "__main__":
     generate_sancoes_cgu_data() #sancoes_cgu
     generate_pncp_data() #pncp
     generate_pgfn_data() #pgfn
-    generate_cpgf_data() #cpgf
+    generate_pgfn_data() #pgfn
     generate_camara_data() #camara
     generate_bndes_data() #bndes
     generate_senado_data() #senado
