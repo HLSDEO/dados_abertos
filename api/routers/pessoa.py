@@ -95,7 +95,8 @@ def get_pessoa(
             cpf=cpf, offset=offset, limit=limit,
         ).data()
 
-        # Verifica se a pessoa é parlamentar (via MESMO_QUE com Parlamentar)
+        # Busca parlamentar vinculado (pode ser a mesma pessoa se for senador/deputado)
+        # Estratégias: 1) MESMO_QUE, 2) CPF direto, 3) Título eleitoral, 4) Nome similar
         parlamentar = run_query(
             s,
             """
@@ -107,7 +108,6 @@ def get_pessoa(
             cpf=cpf,
         ).single()
 
-        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
         if not parlamentar:
             parlamentar = run_query(
                 s,
@@ -120,7 +120,19 @@ def get_pessoa(
                 cpf=cpf,
             ).single()
 
-        # Se ainda não encontrou, tenta buscar Parlamentar por similaridade de nome
+        if not parlamentar:
+            parlamentar = run_query(
+                s,
+                """
+                MATCH (p:Pessoa {cpf: $cpf})
+                MATCH (par:Parlamentar {nr_titulo_eleitoral: p.nr_titulo_eleitoral})
+                RETURN par.codigo_autor AS parlamentar_id,
+                       par.nome_autor AS nome_parlamentar
+                LIMIT 1
+                """,
+                cpf=cpf,
+            ).single()
+
         if not parlamentar:
             parlamentar = run_query(
                 s,
@@ -128,37 +140,6 @@ def get_pessoa(
                 MATCH (p:Pessoa {cpf: $cpf})
                 MATCH (par:Parlamentar)
                 WHERE toLower(par.nome_autor) CONTAINS toLower(p.nome) OR toLower(p.nome) CONTAINS toLower(par.nome_autor)
-                RETURN par.codigo_autor AS parlamentar_id,
-                       par.nome_autor AS nome_parlamentar
-                LIMIT 1
-                """,
-                cpf=cpf,
-            ).single()
-
-        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
-        if not parlamentar:
-            parliamentary民間 Tanque
-        if not parlamentar:
-            # Tenta buscar por similaridade de nome (caso onde não há CPF no nó Parlamentar)
-            # Usa o nr_titulo_eleitoral como identificador alternativo
-            parlamentar = run_query(
-                s,
-                """
-                MATCH (p:Pessoa {cpf: $cpf})
-                OPTIONAL MATCH (par:Parlamentar {nr_titulo_eleitoral: p.nr_titulo_eleitoral})
-                RETURN par.codigo_autor AS parlamentar_id,
-                       par.nome_autor AS nome_parlimentar
-                LIMIT 1
-                """,
-                cpf=cpf,
-            ).single()
-
-        # Se não encontrou via MESMO_QUE, tenta buscar Parlamentar com mesmo CPF
-        if not parlamentar:
-            parlamentar = run_query(
-                s,
-                """
-                MATCH (par:Parlamentar {cpf: $cpf})
                 RETURN par.codigo_autor AS parlamentar_id,
                        par.nome_autor AS nome_parlamentar
                 LIMIT 1
