@@ -1,16 +1,17 @@
 # Neo4j com GDS instalado automaticamente na versão correta
-# Usamos uma versão estável específica para evitar quebras por atualizações automáticas
-FROM neo4j:5.26.0
+FROM neo4j:5.23.0
 
 RUN apt-get update -qq \
     && apt-get install -y -qq --no-install-recommends curl jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalação manual do GDS 2.13.0 (compatível com Neo4j 5.26.0)
-# Isso evita o erro ClassNotFoundException: org.neo4j.lang.AutoCloseablePlus
+# Cria /plugins se não existir, descobre versão do Neo4j e baixa GDS compatível
 RUN mkdir -p /plugins \
-    && GDS_VERSION="2.13.0" \
-    && GDS_URL="https://github.com/neo4j/graph-data-science/releases/download/v${GDS_VERSION}/neo4j-graph-data-science-${GDS_VERSION}.jar" \
-    && echo "Baixando GDS v${GDS_VERSION} para Neo4j 5.26.0..." \
+    && NEO4J_VERSION=$(neo4j version | grep -oP '\d+\.\d+') \
+    && echo "Neo4j detectado: $NEO4J_VERSION" \
+    && GDS_URL=$(curl -sf "https://api.github.com/repos/neo4j/graph-data-science/releases" \
+        | jq -r --arg v "$NEO4J_VERSION" \
+          '[.[] | select(.prerelease == false) | .assets[] | select(.name | test("neo4j-graph-data-science-.*\\.jar$"))] | first | .browser_download_url') \
+    && echo "Baixando GDS: $GDS_URL" \
     && curl -fL "$GDS_URL" -o /plugins/graph-data-science.jar \
     && echo "GDS instalado: $(ls -lh /plugins/graph-data-science.jar)"
