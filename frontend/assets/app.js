@@ -1301,7 +1301,7 @@ function mountCorruptionPage() {
     ${renderHeader({
       label: "Padrões de corrupcao",
       title: "Busca estadual de sinais de risco",
-      subtitle: "Triagem por UF — a API devolve as empresas com mais padrões disparados. Selecione uma para ver os detalhes.",
+      subtitle: "Padrões de corrupção pré-definidos. Selecione uma para ver os detalhes.",
     })}
     <section class="card">
       <div class="toolbar">
