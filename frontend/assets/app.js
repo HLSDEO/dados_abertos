@@ -858,7 +858,7 @@ function mountProfilePage(cytoscape) {
           </div>
           <div class="link-row" style="margin-top:18px;">
             <a class="button secondary" href="/grafo.html?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1">Explorador de grafo</a>
-            ${tipo === "Empresa" ? `<a class="button subtle" href="/corrupcao.html?cnpj=${encodeURIComponent(id)}">Padroes por estado</a>` : ""}
+            ${tipo === "Empresa" ? `<a class="button subtle" href="/corrupcao.html?cnpj=${encodeURIComponent(id)}">Padrões por estado</a>` : ""}
           </div>
         </section>
         <section class="split">
@@ -1226,12 +1226,12 @@ function mountCorruptionPage() {
   // ── Renderizador de padrões (compartilhado pelos dois modos) ─────────────
   async function loadCompanyPatterns(cnpj, containerSelector) {
     const container = $(containerSelector);
-    container.innerHTML = `<div class="loading-state">Carregando padroes da empresa...</div>`;
+    container.innerHTML = `<div class="loading-state">Carregando padrões da empresa...</div>`;
     try {
       const payload = await apiFetch(`/patterns/empresa/${encodeURIComponent(cnpj)}`);
       const active = (payload.patterns || []).filter((pattern) => pattern.triggered);
       if (!active.length) {
-        container.innerHTML = `<div class="empty-state">Nenhum padrao ativo para ${maskCNPJ(cnpj)}.</div>`;
+        container.innerHTML = `<div class="empty-state">Nenhum padrão ativo para ${maskCNPJ(cnpj)}.</div>`;
         return;
       }
       container.innerHTML = `
@@ -1270,7 +1270,7 @@ function mountCorruptionPage() {
   if (cnpjFromQuery) {
     root.innerHTML = `
       ${renderHeader({
-        label: "Padroes de corrupcao",
+        label: "Padrões de corrupcao",
         title: "Padrões de risco da empresa",
         subtitle: `Análise direta para o CNPJ ${maskCNPJ(cnpjFromQuery)}. <a href="/corrupcao.html" style="color:var(--blue, #38bdf8);text-decoration:none;">← Voltar para busca por estado</a>`,
       })}
@@ -1287,7 +1287,7 @@ function mountCorruptionPage() {
         </div>
       </section>
       <section class="card">
-        <div class="card-title">Padroes disparados</div>
+        <div class="card-title">Padrões disparados</div>
         <div id="pattern-results" class="muted">Carregando...</div>
       </section>
     `;
@@ -1299,9 +1299,9 @@ function mountCorruptionPage() {
   // ── MODO ESTADO: fluxo original ───────────────────────────────────────────
   root.innerHTML = `
     ${renderHeader({
-      label: "Padroes de corrupcao",
+      label: "Padrões de corrupcao",
       title: "Busca estadual de sinais de risco",
-      subtitle: "Triagem por UF — a API devolve as empresas com mais padroes disparados. Selecione uma para ver os detalhes.",
+      subtitle: "Triagem por UF — a API devolve as empresas com mais padrões disparados. Selecione uma para ver os detalhes.",
     })}
     <section class="card">
       <div class="toolbar">
@@ -1331,8 +1331,8 @@ function mountCorruptionPage() {
         <div id="state-results" class="results-list"></div>
       </div>
       <div class="card">
-        <div class="card-title">Padroes disparados</div>
-        <div id="pattern-results" class="muted">Selecione uma empresa para abrir os padroes.</div>
+        <div class="card-title">Padrões disparados</div>
+        <div id="pattern-results" class="muted">Selecione uma empresa para abrir os padrões.</div>
       </div>
     </section>
   `;
@@ -1341,12 +1341,12 @@ function mountCorruptionPage() {
     const uf = $("#uf-select").value;
     const qty = $("#uf-qty").value;
     $("#state-results").innerHTML = `<div class="loading-state">Consultando empresas do estado...</div>`;
-    $("#pattern-results").innerHTML = `<div class="muted">Selecione uma empresa para abrir os padroes.</div>`;
+    $("#pattern-results").innerHTML = `<div class="muted">Selecione uma empresa para abrir os padrões.</div>`;
 
     try {
       const payload = await apiFetch(`/patterns/estado/${encodeURIComponent(uf)}?quantidade=${qty}`);
       if (!payload.empresas.length) {
-        $("#state-results").innerHTML = `<div class="empty-state">Nenhuma empresa com padrao disparado em ${uf}.</div>`;
+        $("#state-results").innerHTML = `<div class="empty-state">Nenhuma empresa com padrão disparado em ${uf}.</div>`;
         return;
       }
 
@@ -1358,7 +1358,7 @@ function mountCorruptionPage() {
             <div class="muted mono" style="margin-top:4px;">${maskCNPJ(empresa.cnpj_basico)}</div>
           </div>
           <div>
-            <button class="button subtle company-patterns" data-cnpj="${empresa.cnpj_basico}">${empresa.triggered_count} padroes</button>
+            <button class="button subtle company-patterns" data-cnpj="${empresa.cnpj_basico}">${empresa.triggered_count} padrões</button>
           </div>
         </div>
       `).join("");
