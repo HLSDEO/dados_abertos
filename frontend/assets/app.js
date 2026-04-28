@@ -1222,11 +1222,86 @@ function mountCorruptionPage() {
   const params = new URLSearchParams(window.location.search);
   const cnpjFromQuery = params.get("cnpj");
   const root = $("#page-content");
+
+  // ── Renderizador de padrões (compartilhado pelos dois modos) ─────────────
+  async function loadCompanyPatterns(cnpj, containerSelector) {
+    const container = $(containerSelector);
+    container.innerHTML = `<div class="loading-state">Carregando padroes da empresa...</div>`;
+    try {
+      const payload = await apiFetch(`/patterns/empresa/${encodeURIComponent(cnpj)}`);
+      const active = (payload.patterns || []).filter((pattern) => pattern.triggered);
+      if (!active.length) {
+        container.innerHTML = `<div class="empty-state">Nenhum padrao ativo para ${maskCNPJ(cnpj)}.</div>`;
+        return;
+      }
+      container.innerHTML = `
+        <div class="link-row" style="margin-bottom:12px;">
+          <a class="button secondary" href="${buildProfileUrl("Empresa", cnpj)}">Abrir perfil da empresa</a>
+        </div>
+        <div class="detail-list">
+          ${active.map((pattern) => `
+            <div class="risk-item ${pattern.risk_level}">
+              <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                <div>
+                  <div class="detail-title">${pattern.name_pt}</div>
+                  <div class="muted" style="margin-top:4px;">${pattern.count} ocorrencia(s)</div>
+                </div>
+                <span class="badge" style="color:${pattern.risk_level === "high" ? "#ff3860" : pattern.risk_level === "medium" ? "#ff6b35" : "#ffd60a"}">${pattern.risk_level}</span>
+              </div>
+              <div class="muted mono" style="margin-top:10px;">valor total ${fmtCurrency(pattern.valor_total)}</div>
+              <div class="detail-list" style="margin-top:12px;">
+                ${(pattern.evidence || []).map((item) => `
+                  <div class="detail-item">
+                    <div class="stat-label">${item.tipo}</div>
+                    <div>${item.label}</div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  }
+
+  // ── MODO DIRETO: veio com ?cnpj= na URL ──────────────────────────────────
+  if (cnpjFromQuery) {
+    root.innerHTML = `
+      ${renderHeader({
+        label: "Padroes de corrupcao",
+        title: "Padrões de risco da empresa",
+        subtitle: `Análise direta para o CNPJ ${maskCNPJ(cnpjFromQuery)}. <a href="/corrupcao.html" style="color:var(--blue, #38bdf8);text-decoration:none;">← Voltar para busca por estado</a>`,
+      })}
+      <section class="card">
+        <div class="link-row" style="margin-bottom: 0;">
+          <div>
+            <div class="stat-label">CNPJ</div>
+            <div class="result-title mono">${maskCNPJ(cnpjFromQuery)}</div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <a class="button secondary" href="${buildProfileUrl("Empresa", cnpjFromQuery)}">Ver perfil completo</a>
+            <a class="button subtle" href="/corrupcao.html">Busca por estado</a>
+          </div>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-title">Padroes disparados</div>
+        <div id="pattern-results" class="muted">Carregando...</div>
+      </section>
+    `;
+
+    loadCompanyPatterns(cnpjFromQuery, "#pattern-results");
+    return;
+  }
+
+  // ── MODO ESTADO: fluxo original ───────────────────────────────────────────
   root.innerHTML = `
     ${renderHeader({
       label: "Padroes de corrupcao",
       title: "Busca estadual de sinais de risco",
-      subtitle: "Aqui a navegacao vira uma triagem por UF. A API devolve as empresas com mais padroes disparados e a tela permite abrir os detalhes dos padroes por empresa.",
+      subtitle: "Triagem por UF — a API devolve as empresas com mais padroes disparados. Selecione uma para ver os detalhes.",
     })}
     <section class="card">
       <div class="toolbar">
@@ -1266,7 +1341,7 @@ function mountCorruptionPage() {
     const uf = $("#uf-select").value;
     const qty = $("#uf-qty").value;
     $("#state-results").innerHTML = `<div class="loading-state">Consultando empresas do estado...</div>`;
-    $("#pattern-results").textContent = "Selecione uma empresa para abrir os padroes.";
+    $("#pattern-results").innerHTML = `<div class="muted">Selecione uma empresa para abrir os padroes.</div>`;
 
     try {
       const payload = await apiFetch(`/patterns/estado/${encodeURIComponent(uf)}?quantidade=${qty}`);
@@ -1289,56 +1364,10 @@ function mountCorruptionPage() {
       `).join("");
 
       document.querySelectorAll(".company-patterns").forEach((button) => {
-        button.addEventListener("click", () => loadCompanyPatterns(button.dataset.cnpj));
+        button.addEventListener("click", () => loadCompanyPatterns(button.dataset.cnpj, "#pattern-results"));
       });
-
-      if (cnpjFromQuery) {
-        loadCompanyPatterns(cnpjFromQuery);
-      }
     } catch (error) {
       $("#state-results").innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  }
-
-  async function loadCompanyPatterns(cnpj) {
-    $("#pattern-results").innerHTML = `<div class="loading-state">Carregando padroes da empresa...</div>`;
-    try {
-      const payload = await apiFetch(`/patterns/empresa/${encodeURIComponent(cnpj)}`);
-      const active = (payload.patterns || []).filter((pattern) => pattern.triggered);
-      if (!active.length) {
-        $("#pattern-results").innerHTML = `<div class="empty-state">Nenhum padrao ativo para ${maskCNPJ(cnpj)}.</div>`;
-        return;
-      }
-
-      $("#pattern-results").innerHTML = `
-        <div class="link-row" style="margin-bottom:12px;">
-          <a class="button secondary" href="${buildProfileUrl("Empresa", cnpj)}">Abrir perfil da empresa</a>
-        </div>
-        <div class="detail-list">
-          ${active.map((pattern) => `
-            <div class="risk-item ${pattern.risk_level}">
-              <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-                <div>
-                  <div class="detail-title">${pattern.name_pt}</div>
-                  <div class="muted" style="margin-top:4px;">${pattern.count} ocorrencia(s)</div>
-                </div>
-                <span class="badge" style="color:${pattern.risk_level === "high" ? "#ff3860" : pattern.risk_level === "medium" ? "#ff6b35" : "#ffd60a"}">${pattern.risk_level}</span>
-              </div>
-              <div class="muted mono" style="margin-top:10px;">valor total ${fmtCurrency(pattern.valor_total)}</div>
-              <div class="detail-list" style="margin-top:12px;">
-                ${(pattern.evidence || []).map((item) => `
-                  <div class="detail-item">
-                    <div class="stat-label">${item.tipo}</div>
-                    <div>${item.label}</div>
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          `).join("")}
-        </div>
-      `;
-    } catch (error) {
-      $("#pattern-results").innerHTML = `<div class="error-state">${error.message}</div>`;
     }
   }
 
