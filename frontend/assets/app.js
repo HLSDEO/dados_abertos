@@ -230,7 +230,7 @@ function mountSearchPage() {
             <div class="result-title">${item.nome || item.razao_social || item.id}</div>
             <div class="muted mono" style="margin-top:4px;">${resultIdentity(item)}</div>
           </div>
-          <div class="muted mono">score ${Number(item.score || 0).toFixed(2)}</div>
+          <div class="muted mono">similaridade ${Number(item.score || 0).toFixed(2)}</div>
         </a>
       `).join("");
     } catch (error) {
@@ -973,7 +973,7 @@ function renderEmpresaSections(payload) {
 
 function renderPessoaSections(payload) {
   return `
-    <div class="card-title">Vinculos da pessoa</div>
+    <div class="card-title">Vínculos da pessoa</div>
     ${renderSimpleTable(
       [
         { key: "razao_social", label: "Empresa" },
