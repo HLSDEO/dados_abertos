@@ -433,14 +433,18 @@ function mountGraphPage(cytoscape) {
     destroy3D();
 
      const graphData = {
-       nodes: (graph.nodes || []).map((node) => ({
-         id: node.uid,
-         uid: node.uid,
-         label: node.label,
-         name: node.nome || node.uid,
-         color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
-         val: 5,
-       })),
+       nodes: (graph.nodes || []).map((node) => {
+         const keyPart = node.uid ? node.uid.split(":")[1] || node.uid : node.uid;
+         const name = node.nome || node.razao_social || node.nome_autor || keyPart;
+         return {
+           id: node.uid,
+           uid: node.uid,
+           label: node.label,
+           name: name,
+           color: LABEL_COLORS[node.label] || LABEL_COLORS.default,
+           val: 5,
+         };
+       }),
       links: (graph.edges || []).map((edge, index) => ({
         id: `${edge.source}-${edge.target}-${edge.type}-${index}`,
         source: edge.source,
@@ -645,85 +649,101 @@ function mountGraphPage(cytoscape) {
       }
     }
 
-    async function exportGraphToPDF() {
-      const btn = $("#export-pdf-btn");
-      const originalText = btn.textContent;
-      btn.textContent = "Gerando...";
-      btn.disabled = true;
+     async function exportGraphToPDF() {
+       const btn = $("#export-pdf-btn");
+       const originalText = btn.textContent;
+       btn.textContent = "Gerando...";
+       btn.disabled = true;
 
-      try {
-        if (!window.jspdf) {
-          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
-        }
-        if (!window.html2canvas) {
-          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
-        }
+       try {
+         if (!window.jspdf) {
+           await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+         }
+         if (!window.html2canvas) {
+           await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+         }
 
-        const { jsPDF } = window.jspdf;
+         const { jsPDF } = window.jspdf;
 
-        const graphCanvas = $("#graph-canvas");
-        const canvas = await window.html2canvas(graphCanvas, {
-          backgroundColor: "#090b0d",
-          scale: 2,
-        });
+         const graphCanvas = $("#graph-canvas");
+         
+         // Get actual canvas dimensions
+         const canvasElement = graphCanvas.querySelector("canvas");
+         if (!canvasElement) {
+           throw new Error("Canvas do grafo nao encontrado");
+         }
 
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jsPDF("l", "mm", "a4");
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
+         // Capture with high scale (3x) and better quality settings
+         const canvas = await window.html2canvas(graphCanvas, {
+           backgroundColor: "#090b0d",
+           scale: 3,
+           useCORS: true,
+           allowTaint: true,
+           logging: false,
+           width: graphCanvas.clientWidth,
+           height: graphCanvas.clientHeight,
+         });
 
-        pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+         const imgData = canvas.toDataURL("image/png", 1.0);
+         
+         // Calculate optimal PDF size
+         const pdf = new jsPDF("l", "mm", "a4");
+         const pageWidth = pdf.internal.pageSize.getWidth();
+         const pageHeight = pdf.internal.pageSize.getHeight();
+         
+         // Add high-quality image
+         pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+         
+         const effectiveLabel = $("#graph-label").value;
+         const effectiveId = $("#graph-id").value;
+         const stats = `${currentGraph?.nodes?.length || 0} nós, ${currentGraph?.edges?.length || 0} arestas`;
+         
+         pdf.setFontSize(9);
+         pdf.setTextColor(100);
+         pdf.text(`Grafo: ${effectiveLabel} | ID: ${effectiveId} | ${stats}`, 10, pageHeight - 20);
+         pdf.text(`Fonte: DABERTO - dados abertos | ${new Date().toLocaleDateString("pt-BR")}`, 10, pageHeight - 12);
 
-        const effectiveLabel = $("#graph-label").value;
-        const effectiveId = $("#graph-id").value;
-        const stats = `${currentGraph?.nodes?.length || 0} nós, ${currentGraph?.edges?.length || 0} arestas`;
-        
-        pdf.setFontSize(9);
-        pdf.setTextColor(100);
-        pdf.text(`Grafo: ${effectiveLabel} | ID: ${effectiveId} | ${stats}`, 10, pageHeight - 20);
-        pdf.text(`Fonte: DABERTO - dados abertos | ${new Date().toLocaleDateString("pt-BR")}`, 10, pageHeight - 12);
+         pdf.addPage();
+         pdf.setFontSize(12);
+         pdf.setTextColor(0);
+         pdf.text("Descrição dos dados e origem", 10, 15);
+         
+         pdf.setFontSize(10);
+         pdf.setTextColor(80);
+         const description = [
+           "DABERTO - Inteligência Cívica",
+           "Infraestrutura open-source que cruza bases públicas brasileiras em grafo Neo4j.",
+           "",
+           "Bases de dados incluídas:",
+           "• IBGE - Localidades (municípios, estados, regiões)",
+           "• CNPJ / Receita Federal - Empresas e sócios",
+           "• TSE - Candidatos, partidos e eleições",
+           "• Emendas CGU - Emendas parlamentares",
+           "• Servidores CGU - Servidores públicos",
+           "• Sanções CGU - Penalidades e sanções",
+           "• PNCP - Contratos da administração pública",
+           "• PGFN - Dívida ativa",
+           "• Câmara CEAP - Cotas parlamentares",
+           "• BNDES - Empréstimos",
+           "• Senado CEAP - Cotas senatoriais",
+           "",
+           "Origem dos dados: dados.gov.br, portals de transparência, TSE, Receita Federal.",
+         ];
+         
+         let y = 20;
+         for (const line of description) {
+           pdf.text(line, 10, y);
+           y += 7;
+         }
 
-        pdf.addPage();
-        pdf.setFontSize(12);
-        pdf.setTextColor(0);
-        pdf.text("Descrição dos dados e origem", 10, 15);
-        
-        pdf.setFontSize(10);
-        pdf.setTextColor(80);
-        const description = [
-          "DABERTO - Inteligência Cívica",
-          "Infraestrutura open-source que cruza bases públicas brasileiras em grafo Neo4j.",
-          "",
-          "Bases de dados incluídas:",
-          "• IBGE - Localidades (municípios, estados, regiões)",
-          "• CNPJ / Receita Federal - Empresas e sócios",
-          "• TSE - Candidatos, partidos e eleições",
-          "• Emendas CGU - Emendas parlamentares",
-          "• Servidores CGU - Servidores públicos",
-          "• Sanções CGU - Penalidades e sanções",
-          "• PNCP - Contratos da administração pública",
-          "• PGFN - Dívida ativa",
-          "• Câmara CEAP - Cotas parlamentares",
-          "• BNDES - Empréstimos",
-          "• Senado CEAP - Cotas senatoriais",
-          "",
-          "Origem dos dados: dados.gov.br, portals de transparência, TSE, Receita Federal.",
-        ];
-        
-        let y = 20;
-        for (const line of description) {
-          pdf.text(line, 10, y);
-          y += 7;
-        }
-
-        pdf.save(`grafo-${effectiveLabel}-${effectiveId}.pdf`);
-      } catch (error) {
-        alert("Erro ao gerar PDF: " + error.message);
-      } finally {
-        btn.textContent = originalText;
-        btn.disabled = false;
-      }
-    }
+         pdf.save(`grafo-${effectiveLabel}-${effectiveId}.pdf`);
+       } catch (error) {
+         alert("Erro ao gerar PDF: " + error.message);
+       } finally {
+         btn.textContent = originalText;
+         btn.disabled = false;
+       }
+     }
 
     function loadScript(src) {
       return new Promise((resolve, reject) => {
