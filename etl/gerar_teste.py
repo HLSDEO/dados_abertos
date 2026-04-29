@@ -183,13 +183,119 @@ def generate_pncp_data():
     print("Gerando dados do PNCP...")
     pncp_dir = os.path.join(DATA_DIR, "pncp_csv")
     os.makedirs(pncp_dir, exist_ok=True)
-    
+
+    # ─────────────────────────────────────────
+    # ITENS (já existia)
+    # ─────────────────────────────────────────
     itens = [{
-        'id_contratacao_pncp': '2024-1', 'numero_item': '1', 'ni_fornecedor': CNPJ_FACHADA,
-        'nome_razao_social_fornecedor': 'EMPRESA FACHADA LTDA', 'quantidade_homologada': '100',
-        'valor_unitario_homologado': '1000,00', 'orgao_entidade_cnpj': '00394460000141'
+        'id_contratacao_pncp': '2024-1',
+        'numero_item': '1',
+        'ni_fornecedor': CNPJ_FACHADA,
+        'nome_razao_social_fornecedor': 'EMPRESA FACHADA LTDA',
+        'quantidade_homologada': '100',
+        'valor_unitario_homologado': '1000.00',
+        'orgao_entidade_cnpj': '00394460000141'
     }]
-    pd.DataFrame(itens).to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';')
+
+    pd.DataFrame(itens).to_csv(
+        os.path.join(pncp_dir, "itens.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8'
+    )
+
+    # ─────────────────────────────────────────
+    # CONTRATOS
+    # ─────────────────────────────────────────
+    contratos = [{
+        "id": "C1",
+        "receita_despesa": "Despesa",
+        "numero": "00065/2025",
+        "orgao_codigo": "14000",
+        "orgao_nome": "JUSTICA ELEITORAL",
+        "unidade_codigo": "070009",
+        "esfera": "Federal",
+        "poder": "Judiciario",
+        "sisg": "Nao",
+        "gestao": "00001",
+        "unidade_nome_resumido": "TRE/PB",
+        "unidade_nome": "TRIBUNAL REGIONAL ELEITORAL DA PARAIBA",
+        "unidade_origem_codigo": "070009",
+        "unidade_origem_nome": "TRIBUNAL REGIONAL ELEITORAL DA PARAIBA",
+        "fornecedor_tipo": "JURIDICA",
+        "fonecedor_cnpj_cpf_idgener": CNPJ_FACHADA,
+        "fornecedor_nome": "EMPRESA FACHADA LTDA",
+        "codigo_tipo": "50",
+        "tipo": "Contrato",
+        "categoria": "Compras",
+        "processo": "0008512-65.2024.6.15.8000",
+        "objeto": "AQUISICAO DE EQUIPAMENTOS DE TI",
+        "fundamento_legal": "",
+        "informacao_complementar": "",
+        "codigo_modalidade": "05",
+        "modalidade": "Pregao",
+        "unidade_compra": "070009",
+        "licitacao_numero": "90001/2025",
+        "data_assinatura": "2026-01-14",
+        "data_publicacao": "2026-01-15",
+        "vigencia_inicio": "2026-01-14",
+        "vigencia_fim": "2031-01-14",
+        "valor_inicial": "466441.8",
+        "valor_global": "466441.8",
+        "num_parcelas": "1",
+        "valor_parcela": "466441.8",
+        "valor_acumulado": "0.0",
+        "situacao": "Ativo"
+    }]
+
+    pd.DataFrame(contratos).to_csv(
+        os.path.join(pncp_dir, "contratos.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8'
+    )
+
+    # ─────────────────────────────────────────
+    # EMPENHOS
+    # ─────────────────────────────────────────
+    empenhos = [{
+        "id": "E1",
+        "unidade": "580003",
+        "unidade_nome": "SUBSECRETARIA DE GESTAO E ADMINISTRACAO",
+        "gestao": "00001",
+        "numero_empenho": "2026NE000083",
+        "data_emissao": "2026-03-11",
+        "cpf_cnpj_credor": CNPJ_FACHADA,
+        "credor": "EMPRESA FACHADA LTDA",
+        "fonte_recurso": "1000000000",
+        "ptres": "",
+        "modalidade_licitacao_siafi": "",
+        "naturezadespesa": "339040",
+        "naturezadespesa_descricao": "SERVICOS DE TI",
+        "planointerno": "ADMPA",
+        "planointerno_descricao": "OPERACAO ADMINISTRATIVA",
+        "valor_empenhado": "22242.63",
+        "valor_aliquidar": "16048.7",
+        "valor_liquidado": "1521.32",
+        "valor_pago": "4672.61",
+        "valor_rpinscrito": "0",
+        "valor_rpaliquidar": "0",
+        "valor_rpaliquidado": "0",
+        "valor_rppago": "0",
+        "informacao_complementar": "",
+        "sistema_origem": "COMPRASNET",
+        "contrato_id": "C1",  # ligação com contratos
+        "created_at": "2026-03-11",
+        "updated_at": "2026-03-19",
+        "id_cipi": ""
+    }]
+
+    pd.DataFrame(empenhos).to_csv(
+        os.path.join(pncp_dir, "empenhos.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8'
+    )
 
 def generate_servidores_data():
     print("Gerando dados de Servidores...")
