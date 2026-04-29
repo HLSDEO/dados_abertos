@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import json
 import random
+import shutil
 from datetime import datetime
 
 # Configuração de pastas
@@ -691,6 +692,12 @@ def generate_senado_data():
         json.dump(wrapped, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
+    # Limpar dados existentes para evitar conflitos (apenas subdirs)
+    for subdir in ["ibge", "cnpj", "tse", "emendas_cgu", "sancoes_cgu", "tesouro_transparente", "servidores", "pncp_csv", "pgfn", "camara", "bndes", "senado", "siafi"]:
+        path = os.path.join(DATA_DIR, subdir)
+        if os.path.exists(path):
+            shutil.rmtree(path)
+
     generate_ibge_data() #ibge
     generate_cnpj_data() #cnpj
     generate_siafi_data() #siafi
