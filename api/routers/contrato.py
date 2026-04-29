@@ -30,34 +30,21 @@ def get_contrato(
 
         fornecedor = run_query(
             s,
-            """
-            MATCH (c:ContratoComprasNet {contrato_id: $contrato_id})-[:CELEBRADO_COM]->(f:Fornecedor)
-            RETURN f.ni_fornecedor AS ni_fornecedor, f.nome AS nome, f.tipo_pessoa AS tipo_pessoa
-            """,
+            "MATCH (c:ContratoComprasNet {contrato_id: $contrato_id})-[:CELEBRADO_COM]->(f:Fornecedor) RETURN f.ni_fornecedor AS ni_fornecedor, f.nome AS nome, f.tipo_pessoa AS tipo_pessoa",
             contrato_id=contrato_id,
         ).single()
         fornecedor = dict(fornecedor) if fornecedor else None
 
         orgao = run_query(
             s,
-            """
-            MATCH (o:Orgao)-[:CELEBRA]->(c:ContratoComprasNet {contrato_id: $contrato_id})
-            RETURN o.cnpj AS cnpj, o.nome AS nome, o.uf AS uf
-            """,
+            "MATCH (o:Orgao)-[:CELEBRA]->(c:ContratoComprasNet {contrato_id: $contrato_id}) RETURN o.cnpj AS cnpj, o.nome AS nome, o.uf AS uf",
             contrato_id=contrato_id,
         ).single()
         orgao = dict(orgao) if orgao else None
 
         empenhos = run_query(
             s,
-            """
-            MATCH (c:ContratoComprasNet {contrato_id: $contrato_id})-[:PAGO_POR]->(e:Empenho)
-            RETURN e.empenho_id AS id, e.numero_empenho AS numero, e.ano_empenho AS ano,
-                   e.valor_empenho AS valor
-            ORDER BY e.ano_empenho DESC, e.numero_empenho DESC
-            SKIP $offset
-            LIMIT $limit
-            """,
+            "MATCH (c:ContratoComprasNet {contrato_id: $contrato_id})-[:PAGO_POR]->(e:Empenho) RETURN e.empenho_id AS id, e.numero_empenho AS numero, e.ano_empenho AS ano, e.valor_empenho AS valor ORDER BY e.ano_empenho DESC, e.numero_empenho DESC SKIP $offset LIMIT $limit",
             contrato_id=contrato_id, offset=offset, limit=limit,
         ).data()
 
