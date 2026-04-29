@@ -213,8 +213,9 @@ def generate_cnpj_data():
 
 def generate_tse_data():
     print("Gerando dados do TSE...")
-    candidatos_dir = os.path.join(DATA_DIR, "candidatos")
-    doacoes_dir = os.path.join(DATA_DIR, "doacoes")
+    tse_dir = os.path.join(DATA_DIR, "tse")
+    candidatos_dir = os.path.join(tse_dir, "candidatos")
+    doacoes_dir = os.path.join(tse_dir, "doacoes")
     ano_dir_cand = os.path.join(candidatos_dir, "2022")
     ano_dir_doac = os.path.join(doacoes_dir, "2022")
     os.makedirs(ano_dir_cand, exist_ok=True)
