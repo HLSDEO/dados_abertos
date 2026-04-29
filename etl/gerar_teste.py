@@ -438,6 +438,115 @@ def generate_servidores_data():
     }]
     pd.DataFrame(cad).to_csv(os.path.join(serv_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
 
+def generate_emendas_cgu_data(qtd=1000):
+    print("Gerando dados de emendas CGU...")
+
+    base_dir = os.path.join(DATA_DIR, "emendas_cgu")
+    os.makedirs(base_dir, exist_ok=True)
+
+    emendas = []
+    convenios = []
+    despesas = []
+
+    for i in range(qtd):
+        cod_emenda = f"2026{str(i).zfill(6)}"
+        cod_autor = str(random.randint(1000, 9999))
+        nome_autor = random.choice([
+            "DELEGADO EDER MAURO",
+            "JOAO SILVA",
+            "MARIA SOUZA",
+            "CARLOS OLIVEIRA"
+        ])
+
+        cod_funcao = random.choice(["10", "12", "15"])
+        nome_funcao = {
+            "10": "Saúde",
+            "12": "Educação",
+            "15": "Urbanismo"
+        }[cod_funcao]
+
+        cod_programa = str(random.randint(5000, 5999))
+
+        # ── EMENDAS ─────────────────────
+        emendas.append({
+            "Código da Emenda": cod_emenda,
+            "Ano da Emenda": "2026",
+            "Tipo de Emenda": "Emenda Individual - Transferências com Finalidade Definida",
+            "Código do Autor da Emenda": cod_autor,
+            "Nome do Autor da Emenda": nome_autor,
+            "Número da emenda": str(i).zfill(4),
+            "Localidade de aplicação do recurso": "MÚLTIPLO",
+            "Código Município IBGE": "",
+            "Município": "Múltiplo",
+            "Código UF IBGE": "32",
+            "UF": "ES",
+            "Região": "Sudeste",
+            "Código Função": cod_funcao,
+            "Nome Função": nome_funcao,
+            "Código Subfunção": "302",
+            "Nome Subfunção": "Assistência hospitalar",
+            "Código Programa": cod_programa,
+            "Nome Programa": "PROGRAMA TESTE",
+            "Código Ação": "2E90",
+            "Nome Ação": "AÇÃO TESTE",
+            "Código Plano Orçamentário": "0000",
+            "Nome Plano Orçamentário": "PLANO TESTE",
+            "Valor Empenhado": str(round(random.uniform(1000, 1000000), 2)).replace(".", ","),
+            "Valor Liquidado": "0,00",
+            "Valor Pago": "0,00",
+            "Valor Restos A Pagar Inscritos": "0,00",
+            "Valor Restos A Pagar Cancelados": "0,00",
+            "Valor Restos A Pagar Pagos": "0,00",
+        })
+
+        # ── CONVÊNIO (50% das emendas) ──
+        if random.random() < 0.5:
+            num_conv = str(random.randint(800000, 999999))
+
+            convenios.append({
+                "Código da Emenda": cod_emenda,
+                "Código Função": cod_funcao,
+                "Nome Função": nome_funcao,
+                "Código Subfunção": "302",
+                "Nome Subfunção": "Assistência hospitalar",
+                "Localidade do gasto": "SERRA (ES)",
+                "Tipo de Emenda": "Emenda Individual",
+                "Data Publicação Convênio": "01/01/2026",
+                "Convenente": "PREFEITURA DE SERRA",
+                "Objeto Convênio": "AQUISIÇÃO DE EQUIPAMENTOS",
+                "Número Convênio": num_conv,
+                "Valor Convênio": str(round(random.uniform(10000, 500000), 2)).replace(".", ","),
+            })
+
+        # ── DESPESAS ────────────────────
+        for _ in range(random.randint(1, 3)):
+            cnpj = "".join([str(random.randint(0, 9)) for _ in range(14)])
+
+            despesas.append({
+                "Código da Emenda": cod_emenda,
+                "Código do Autor da Emenda": cod_autor,
+                "Nome do Autor da Emenda": nome_autor,
+                "Número da emenda": str(i).zfill(4),
+                "Tipo de Emenda": "Emenda Individual",
+                "Ano/Mês": "202604",
+                "Código do Favorecido": cnpj,
+                "Favorecido": f"EMPRESA {cnpj[:4]} LTDA",
+                "Natureza Jurídica": "Sociedade Empresária Limitada",
+                "Tipo Favorecido": "Pessoa Jurídica",
+                "UF Favorecido": "ES",
+                "Município Favorecido": "SERRA",
+                "Valor Recebido": str(round(random.uniform(100, 10000), 2)).replace(".", ","),
+            })
+
+    # ── SALVAR CSVs ────────────────────
+    pd.DataFrame(emendas).to_csv(os.path.join(base_dir, "emendas.csv"), index=False)
+    pd.DataFrame(convenios).to_csv(os.path.join(base_dir, "convenios.csv"), index=False)
+    pd.DataFrame(despesas).to_csv(os.path.join(base_dir, "por_favorecido.csv"), index=False)
+
+    print(f"✓ Emendas: {len(emendas)}")
+    print(f"✓ Convênios: {len(convenios)}")
+    print(f"✓ Despesas: {len(despesas)}")
+
 if __name__ == "__main__":
     # Limpar e recriar
     if os.path.exists(DATA_DIR):
@@ -454,5 +563,6 @@ if __name__ == "__main__":
     generate_bndes_data()
     generate_pncp_data()
     generate_servidores_data()
+    generate_emendas_cgu_data()
     
     print("\nDados sintéticos realistas gerados com sucesso!")
