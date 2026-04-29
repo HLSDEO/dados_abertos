@@ -13,8 +13,8 @@ Arquivos baixados para data/pncp_csv/:
 
 Uso:
     python etl/download/8-pncp.py          # baixa 2026
-    python etl/download/8-pncp.py 2025     # baixa 2025
-    python etl/download/8-pncp.py 2024 2023 # múltiplos anos
+    python etl/download/8-pncp.py --anos 2025     # baixa 2025
+    python etl/download/8-pncp.py --anos 2024 2023 # múltiplos anos
 """
 
 import argparse
