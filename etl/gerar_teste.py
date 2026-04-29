@@ -706,6 +706,131 @@ def generate_tse_data(empresas):
         sep=';'
     )
 
+def generate_tse_bens_data(empresas):
+    print("Gerando dados de bens de candidatos (TSE)...")
+
+    bens_dir = os.path.join(DATA_DIR, "tse", "bens")
+    os.makedirs(bens_dir, exist_ok=True)
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    meta = {
+        "fonte_nome": "TSE — Tribunal Superior Eleitoral",
+        "fonte_descricao": "Dados Eleitorais Abertos",
+        "fonte_url": "https://dadosabertos.tse.jus.br",
+        "fonte_licenca": "Dados Abertos — https://creativecommons.org/licenses/by/4.0/",
+        "fonte_url_origem": "https://cdn.tse.jus.br/estatistica/sead/odsele/bem_candidato/bem_candidato_2022.zip",
+        "fonte_ano": "2022",
+        "fonte_coletado_em": now
+    }
+
+    bens = []
+
+    # ─────────────────────────────────────────
+    # CANDIDATO PRINCIPAL (já existente)
+    # ─────────────────────────────────────────
+    SQ_CANDIDATO_BASE = "10001"
+
+    bens_base = [
+        ("TRX 420 FOURTRAX MARCA HONDA", "27999,00"),
+        ("DINHEIRO EM ESPÉCIE", "20000,00"),
+        ("SALDO EM CONTAS CORRENTES", "46103,97"),
+        ("SALDO EM CONTAS POUPANÇA", "734,89"),
+        ("SALDO EM CONTAS INVESTIMENTO", "8095,58"),
+    ]
+
+    for desc, val in bens_base:
+        bens.append({
+            "ANO_ELEICAO": "2022",
+            "CD_TIPO_ELEICAO": "2",
+            "NM_TIPO_ELEICAO": "Eleição Ordinária",
+            "SQ_CANDIDATO": SQ_CANDIDATO_BASE,
+            "DS_BEM_CANDIDATO": desc,
+            "VR_BEM_CANDIDATO": val,
+            **meta
+        })
+
+    # ─────────────────────────────────────────
+    # GERAR OUTROS CANDIDATOS SINTÉTICOS
+    # ─────────────────────────────────────────
+    for i, e in enumerate(empresas[:20]):  # limita volume
+
+        sq = f"20000{i:06d}"
+
+        # Cenário 5 → candidato com patrimônio alto (cruzável com doações)
+        if e["cenario"] == 5:
+            bens.append({
+                "ANO_ELEICAO": "2022",
+                "CD_TIPO_ELEICAO": "2",
+                "NM_TIPO_ELEICAO": "Eleição Ordinária",
+                "SQ_CANDIDATO": sq,
+                "DS_BEM_CANDIDATO": "APARTAMENTO DE ALTO PADRÃO",
+                "VR_BEM_CANDIDATO": "850000,00",
+                **meta
+            })
+
+            bens.append({
+                "ANO_ELEICAO": "2022",
+                "CD_TIPO_ELEICAO": "2",
+                "NM_TIPO_ELEICAO": "Eleição Ordinária",
+                "SQ_CANDIDATO": sq,
+                "DS_BEM_CANDIDATO": "SUV",
+                "VR_BEM_CANDIDATO": "180000,00",
+                **meta
+            })
+
+        # Cenário 4 → bens médios + vínculo político
+        elif e["cenario"] == 4:
+            bens.append({
+                "ANO_ELEICAO": "2022",
+                "CD_TIPO_ELEICAO": "2",
+                "NM_TIPO_ELEICAO": "Eleição Ordinária",
+                "SQ_CANDIDATO": sq,
+                "DS_BEM_CANDIDATO": "CASA RESIDENCIAL",
+                "VR_BEM_CANDIDATO": "320000,00",
+                **meta
+            })
+
+            bens.append({
+                "ANO_ELEICAO": "2022",
+                "CD_TIPO_ELEICAO": "2",
+                "NM_TIPO_ELEICAO": "Eleição Ordinária",
+                "SQ_CANDIDATO": sq,
+                "DS_BEM_CANDIDATO": "SALDO EM CONTA CORRENTE",
+                "VR_BEM_CANDIDATO": "45000,00",
+                **meta
+            })
+
+        # Outros cenários → ruído controlado
+        else:
+            if random.random() < 0.3:
+                bens.append({
+                    "ANO_ELEICAO": "2022",
+                    "CD_TIPO_ELEICAO": "2",
+                    "NM_TIPO_ELEICAO": "Eleição Ordinária",
+                    "SQ_CANDIDATO": sq,
+                    "DS_BEM_CANDIDATO": random.choice([
+                        "MOTOCICLETA",
+                        "VEÍCULO AUTOMOTOR",
+                        "SALDO EM POUPANÇA",
+                        "APLICAÇÃO FINANCEIRA"
+                    ]),
+                    "VR_BEM_CANDIDATO": f"{random.randint(5000, 80000)},00",
+                    **meta
+                })
+
+    # ─────────────────────────────────────────
+    # SALVAR CSV
+    # ─────────────────────────────────────────
+    pd.DataFrame(bens).to_csv(
+        os.path.join(bens_dir, "bens_2022.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8'
+    )
+
+    print(f"✓ Bens gerados: {len(bens)}")
+
 def generate_senado_data(empresas):
     print("Gerando dados do Senado Federal (CSV)...")
 
@@ -837,5 +962,6 @@ if __name__ == "__main__":
     generate_camara_data(empresas)
     generate_senado_data(empresas)
     generate_tse_data(empresas)
+    generate_tse_bens_data(empresas)
 
     print("✓ Dados sintéticos com cenários gerados!")
