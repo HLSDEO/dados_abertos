@@ -57,17 +57,38 @@ def generate_ibge_data():
     ibge_dir = os.path.join(DATA_DIR, "ibge")
     os.makedirs(ibge_dir, exist_ok=True)
     
-    pd.DataFrame({
-        'id': ['1', '5'], 'sigla': ['N', 'CO'], 'nome': ['Norte', 'Centro-Oeste']
-    }).to_csv(os.path.join(ibge_dir, "regioes.csv"), index=False)
+    meta = {
+        'fonte_nome': 'IBGE',
+        'fonte_descricao': 'Dados Abertos IBGE',
+        'fonte_licenca': 'CC-BY 4.0',
+        'fonte_url': 'https://www.ibge.gov.br',
+        'fonte_coletado_em': datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    }
+
+    # Regiões
+    pd.DataFrame([{
+        'id': '5', 'sigla': 'CO', 'nome': 'Centro-Oeste', **meta
+    }]).to_csv(os.path.join(ibge_dir, "regioes.csv"), index=False)
     
-    pd.DataFrame({
-        'id': ['53'], 'sigla': ['DF'], 'nome': ['Distrito Federal'], 'regiao_id': ['5']
-    }).to_csv(os.path.join(ibge_dir, "estados.csv"), index=False)
+    # Estados
+    pd.DataFrame([{
+        'id': '53', 'sigla': 'DF', 'nome': 'Distrito Federal', 'regiao_id': '5', **meta
+    }]).to_csv(os.path.join(ibge_dir, "estados.csv"), index=False)
     
-    pd.DataFrame({
-        'id': ['5300108'], 'nome': ['Brasília'], 'microrregiao_id': ['53001']
-    }).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False)
+    # Mesorregiões
+    pd.DataFrame([{
+        'id': '5301', 'nome': 'Distrito Federal', 'UF_id': '53', **meta
+    }]).to_csv(os.path.join(ibge_dir, "mesorregioes.csv"), index=False)
+
+    # Microrregiões
+    pd.DataFrame([{
+        'id': '53001', 'nome': 'Brasília', 'mesorregiao_id': '5301', **meta
+    }]).to_csv(os.path.join(ibge_dir, "microrregioes.csv"), index=False)
+
+    # Municípios
+    pd.DataFrame([{
+        'id': '5300108', 'nome': 'Brasília', 'microrregiao_id': '53001', **meta
+    }]).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False)
 
 def generate_senado_data():
     print("Gerando dados do Senado Federal (CSV)...")
