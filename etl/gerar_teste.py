@@ -648,8 +648,10 @@ def generate_camara_data(empresas):
 def generate_tse_data(empresas):
     print("Gerando dados do TSE...")
 
-    tse_dir = os.path.join(DATA_DIR, "tse", "2022")
-    os.makedirs(tse_dir, exist_ok=True)
+    doacoes_dir = os.path.join(DATA_DIR, "tse", "doacoes")
+    candidatos_dir = os.path.join(DATA_DIR, "tse", "candidatos")
+    os.makedirs(doacoes_dir, exist_ok=True)
+    os.makedirs(candidatos_dir, exist_ok=True)
 
     # ─────────────────────────────────────────
     # CANDIDATOS (mantém estrutura original)
@@ -665,7 +667,7 @@ def generate_tse_data(empresas):
     }]
 
     pd.DataFrame(candidatos).to_csv(
-        os.path.join(tse_dir, "candidatos_2022.csv"),
+        os.path.join(candidatos_dir, "candidatos_2022.csv"),
         index=False,
         sep=';'
     )
@@ -699,7 +701,7 @@ def generate_tse_data(empresas):
     })
 
     pd.DataFrame(doacoes).to_csv(
-        os.path.join(tse_dir, "doacoes_2022.csv"),
+        os.path.join(doacoes_dir, "doacoes_2022.csv"),
         index=False,
         sep=';'
     )
