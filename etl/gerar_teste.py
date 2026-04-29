@@ -1,186 +1,101 @@
 import pandas as pd
 import os
-import json
 import random
 import shutil
-import csv
 from datetime import datetime, timezone
 
-# Configuração de pastas
 DATA_DIR = "data"
 
-# IDs padronizados para interconexões (base para padrões de corrupção)
+# IDs base
 CPF_POLITICO = "99988877766"
 CPF_JOAO     = "11111111111"
 CPF_MARIA    = "22222222222"
 
-CNPJ_FACHADA   = "11111111000100"
-CNPJ_AMIGA     = "22222222000100"
-CNPJ_SUSPEITOS = "33333333000199"
-CNPJ_XYZ       = "12345678000199"
-CNPJ_HOTEL     = "22345678000100"
-CNPJ_GRAFICA   = "32345678000100"
-
 MUNICIPIO_BRASILIA = "9701"
 UF_DF = "DF"
 
-# Multiplicador para volume de dados
-MULT = 5
+TOTAL_EMPRESAS = 120
 
-def generate_cnpj_data():
-    print("Gerando dados de CNPJ (Receita Federal)...")
+# ─────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────
 
-    snapshot = "2024-01"
-    base_dir = os.path.join(DATA_DIR, "cnpj", snapshot, "csv")
+def rand_cnpj():
+    return "".join([str(random.randint(0, 9)) for _ in range(14)])
+
+def rand_cpf():
+    return "".join([str(random.randint(0, 9)) for _ in range(11)])
+
+def generate_empresas():
+    empresas = []
+
+    for i in range(TOTAL_EMPRESAS):
+        cnpj = rand_cnpj()
+        empresas.append({
+            "cnpj": cnpj,
+            "cnpj_basico": cnpj[:8],
+            "razao_social": f"EMPRESA_{i}",
+            "cenario": i % 6
+        })
+
+    return empresas
+
+# ─────────────────────────────────────────
+# CNPJ
+# ─────────────────────────────────────────
+
+def generate_cnpj_data(empresas):
+    print("Gerando CNPJ...")
+
+    base_dir = os.path.join(DATA_DIR, "cnpj/2024-01/csv")
     os.makedirs(base_dir, exist_ok=True)
 
-    # ─────────────────────────────────────────
-    # EMPRESAS
-    # ─────────────────────────────────────────
-    empresas = [{
-        "cnpj_basico": CNPJ_FACHADA[:8],
-        "razao_social": "EMPRESA FACHADA LTDA",
-        "natureza_juridica": "2062",
-        "qualificacao_responsavel": "49",
-        "capital_social": "100000.00",
-        "porte_empresa": "01",
-        "ente_federativo": "",
-        "fonte_snapshot": snapshot
-    }]
+    emp_rows = []
+    est_rows = []
+    socio_rows = []
+    simples_rows = []
 
-    pd.DataFrame(empresas).to_csv(
-        os.path.join(base_dir, "empresas.csv"),
-        index=False,
-        encoding="utf-8"
-    )
+    for e in empresas:
 
-    # ─────────────────────────────────────────
-    # ESTABELECIMENTOS
-    # ─────────────────────────────────────────
-    estabelecimentos = [{
-        "cnpj_basico": CNPJ_FACHADA[:8],
-        "cnpj": CNPJ_FACHADA,
-        "nome_fantasia": "FACHADA TECH",
-        "situacao_cadastral": "02",
-        "data_situacao_cadastral": "20240101",
-        "data_inicio_atividade": "20200101",
-        "cnae_principal": "6201501",
-        "uf": "DF",
-        "cep": "70000000",
-        "logradouro": "RUA FICTICIA",
-        "numero": "100",
-        "bairro": "CENTRO",
-        "email": "contato@fachada.com",
-        "municipio": MUNICIPIO_BRASILIA
-    }]
+        emp_rows.append({
+            "cnpj_basico": e["cnpj_basico"],
+            "razao_social": e["razao_social"],
+            "natureza_juridica": "2062",
+            "capital_social": "100000.00"
+        })
 
-    pd.DataFrame(estabelecimentos).to_csv(
-        os.path.join(base_dir, "estabelecimentos.csv"),
-        index=False,
-        encoding="utf-8"
-    )
+        est_rows.append({
+            "cnpj_basico": e["cnpj_basico"],
+            "cnpj": e["cnpj"],
+            "nome_fantasia": e["razao_social"],
+            "uf": "DF",
+            "municipio": MUNICIPIO_BRASILIA
+        })
 
-    # ─────────────────────────────────────────
-    # SOCIOS
-    # ─────────────────────────────────────────
-    socios = [
-        {
-            "cnpj_basico": CNPJ_FACHADA[:8],
-            "identificador_socio": "2",  # PF
-            "nome_socio": "JOAO SOCIO",
-            "cpf_cnpj_socio": CPF_JOAO,
-            "qualificacao_socio": "49",
-            "data_entrada": "20200101",
-            "faixa_etaria": "4"
-        },
-        {
-            "cnpj_basico": CNPJ_FACHADA[:8],
-            "identificador_socio": "2",
-            "nome_socio": "CPF MASCARADO",
-            "cpf_cnpj_socio": "***123***00",
-            "qualificacao_socio": "49",
-            "data_entrada": "20200101",
-            "faixa_etaria": "3"
-        }
-    ]
+        cpf = rand_cpf()
 
-    pd.DataFrame(socios).to_csv(
-        os.path.join(base_dir, "socios.csv"),
-        index=False,
-        encoding="utf-8"
-    )
+        if e["cenario"] == 2:
+            cpf = CPF_MARIA  # servidor como sócio
 
-    # ─────────────────────────────────────────
-    # SIMPLES
-    # ─────────────────────────────────────────
-    simples = [{
-        "cnpj_basico": CNPJ_FACHADA[:8],
-        "opcao_simples": "S",
-        "data_opcao_simples": "20200101",
-        "data_exclusao_simples": "",
-        "opcao_mei": "N",
-        "data_opcao_mei": "",
-        "data_exclusao_mei": ""
-    }]
+        socio_rows.append({
+            "cnpj_basico": e["cnpj_basico"],
+            "nome_socio": "SOCIO TESTE",
+            "cpf_cnpj_socio": cpf
+        })
 
-    pd.DataFrame(simples).to_csv(
-        os.path.join(base_dir, "simples.csv"),
-        index=False,
-        encoding="utf-8"
-    )
+        simples_rows.append({
+            "cnpj_basico": e["cnpj_basico"],
+            "opcao_simples": "S"
+        })
 
-    # ─────────────────────────────────────────
-    # TABELAS DE DOMÍNIO (OBRIGATÓRIAS!)
-    # ─────────────────────────────────────────
-    pd.DataFrame([{
-        "codigo_cnae": "6201501",
-        "descricao_cnae": "Desenvolvimento de software"
-    }]).to_csv(os.path.join(base_dir, "cnaes.csv"), index=False)
+    pd.DataFrame(emp_rows).to_csv(os.path.join(base_dir, "empresas.csv"), index=False)
+    pd.DataFrame(est_rows).to_csv(os.path.join(base_dir, "estabelecimentos.csv"), index=False)
+    pd.DataFrame(socio_rows).to_csv(os.path.join(base_dir, "socios.csv"), index=False)
+    pd.DataFrame(simples_rows).to_csv(os.path.join(base_dir, "simples.csv"), index=False)
 
-    pd.DataFrame([{
-        "codigo_natureza": "2062",
-        "descricao_natureza": "Sociedade Empresária Limitada"
-    }]).to_csv(os.path.join(base_dir, "naturezas.csv"), index=False)
-
-    pd.DataFrame([{
-        "codigo_qualificacao": "49",
-        "descricao_qualificacao": "Sócio-Administrador"
-    }]).to_csv(os.path.join(base_dir, "qualificacoes.csv"), index=False)
-
-    pd.DataFrame([{
-        "codigo_municipio_rf": MUNICIPIO_BRASILIA,
-        "nome_municipio": "BRASILIA"
-    }]).to_csv(os.path.join(base_dir, "municipios_rf.csv"), index=False)
-
-    pd.DataFrame([{
-        "codigo_pais": "105",
-        "nome_pais": "BRASIL"
-    }]).to_csv(os.path.join(base_dir, "paises.csv"), index=False)
-
-# Funções auxiliares para variações
-def vary_name(name):
-    variations = [
-        name,
-        name.replace('A', 'Ã'),
-        name.replace('O', 'Ô'),
-        name.upper(),
-        name.lower(),
-        name.split()[0] + ' ' + name.split()[-1][0] + '.',
-    ]
-    return random.choice(variations)
-
-def vary_cpf(cpf):
-    cpf_list = list(cpf)
-    pos = random.randint(0, len(cpf_list)-1)
-    cpf_list[pos] = str((int(cpf_list[pos]) + 1) % 10)
-    return ''.join(cpf_list)
-
-def vary_cnpj(cnpj):
-    cnpj_list = list(cnpj)
-    pos = random.randint(0, len(cnpj_list)-1)
-    if cnpj_list[pos].isdigit():
-        cnpj_list[pos] = str((int(cnpj_list[pos]) + 1) % 10)
-    return ''.join(cnpj_list)
+# ─────────────────────────────────────────
+# IBGE (mantido)
+# ─────────────────────────────────────────
 
 def generate_ibge_data():
     print("Gerando dados do IBGE...")
@@ -220,112 +135,134 @@ def generate_ibge_data():
         'id': '5300108', 'nome': 'Brasília', 'microrregiao_id': '53001', **meta
     }]).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False)
 
-def generate_senado_data():
-    print("Gerando dados do Senado Federal (CSV)...")
-    senado_dir = os.path.join(DATA_DIR, "senado")
-    os.makedirs(senado_dir, exist_ok=True)
-    
-    data = []
-    base_senado = [
-        {"COD_SENADOR": "5967", "NOME_SENADOR": "ANGELO CORONEL", "TIPO_DESPESA": "Combustíveis", "CPF_CNPJ_FORNECEDOR": CNPJ_XYZ, "NOME_FORNECEDOR": "AUTO POSTO BRASIL LTDA", "VALOR_REEMBOLSADO": "261,03"},
-        {"COD_SENADOR": "1234", "NOME_SENADOR": "SENADOR TESTE", "TIPO_DESPESA": "Hospedagem", "CPF_CNPJ_FORNECEDOR": CNPJ_HOTEL, "NOME_FORNECEDOR": "HOTEL CENTRAL", "VALOR_REEMBOLSADO": "1.200,50"},
-    ]
-    
-    for i in range(MULT * 2):
-        for sen in base_senado:
-            row = sen.copy()
-            row["ID"] = f"999{i}{random.randint(100,999)}"
-            row["ANO"] = "2024"
-            row["MÊS"] = str((i % 12) + 1)
-            row["DATA"] = f"2024-{(i % 12)+1:02d}-01"
-            row["fonte_nome"] = "Senado Federal"
-            data.append(row)
-            
-    df = pd.DataFrame(data)
-    df.to_csv(os.path.join(senado_dir, "despesas_2024.csv"), index=False, sep=',', encoding='utf-8-sig')
+# ─────────────────────────────────────────
+# PNCP
+# ─────────────────────────────────────────
 
-def generate_camara_data():
-    print("Gerando dados da Câmara (CSV)...")
-    camara_dir = os.path.join(DATA_DIR, "camara")
-    os.makedirs(camara_dir, exist_ok=True)
-    
-    data = []
-    for i in range(MULT * 5):
-        data.append({
-            "despesa_id": f"CAM{i}",
-            "tipo_despesa": "DIVULGACAO",
-            "valor_liquido": str(random.randint(1000, 5000)) + ".00",
-            "data_emissao": "2024-01-01",
-            "ano": "2024",
-            "mes": "1",
-            "cnpj_fornecedor": CNPJ_GRAFICA,
-            "nome_fornecedor": "GRAFICA RAPIDA",
-            "partido": "PTST",
-            "uf": "DF",
-            "nome_parlamentar": "DEPUTADO INFLUENTE",
-            "fonte_nome": "Câmara dos Deputados"
-        })
-    pd.DataFrame(data).to_csv(os.path.join(camara_dir, "despesas_2024.csv"), index=False, sep=',', encoding='utf-8-sig')
-
-def generate_tse_data():
-    print("Gerando dados do TSE...")
-    tse_dir = os.path.join(DATA_DIR, "tse", "2022")
-    os.makedirs(tse_dir, exist_ok=True)
-    
-    # Candidatos
-    cand = [{
-        'ANO_ELEICAO': '2022', 'SG_UF': 'DF', 'SQ_CANDIDATO': '10001', 'NR_CPF_CANDIDATO': CPF_POLITICO,
-        'NM_CANDIDATO': 'POLITICO INFLUENTE', 'SG_PARTIDO': 'PTST', 'DS_CARGO': 'SENADOR'
-    }]
-    pd.DataFrame(cand).to_csv(os.path.join(tse_dir, "candidatos_2022.csv"), index=False, sep=';')
-    
-    # Doações
-    doacoes = [{
-        'ANO_ELEICAO': '2022', 'SQ_CANDIDATO': '10001', 'NR_CPF_DOADOR': CPF_JOAO,
-        'NM_DOADOR': 'JOAO DOADOR', 'VR_RECEITA': '50000,00', 'DT_RECEITA': '01/09/2022'
-    }]
-    pd.DataFrame(doacoes).to_csv(os.path.join(tse_dir, "doacoes_2022.csv"), index=False, sep=';')
-
-def generate_sancoes_data():
-    print("Gerando dados de Sanções (CEIS/CNEP)...")
-    sancoes_dir = os.path.join(DATA_DIR, "sancoes_cgu")
-    os.makedirs(sancoes_dir, exist_ok=True)
-    
-    sancoes = [{
-        'cpf_cnpj': CNPJ_SUSPEITOS, 'nome': 'SUPRIMENTOS SUSPEITOS ME',
-        'tipo_sancao': 'Inidoneidade', 'data_inicio': '2023-01-01', 'orgao_sancionador': 'MINISTERIO DA SAUDE'
-    }]
-    pd.DataFrame(sancoes).to_csv(os.path.join(sancoes_dir, "ceis.csv"), index=False, sep=';', encoding='utf-8-sig')
-
-def generate_bndes_data():
-    print("Gerando dados do BNDES...")
-    bndes_dir = os.path.join(DATA_DIR, "bndes")
-    os.makedirs(bndes_dir, exist_ok=True)
-    
-    bndes = [{
-        '_id': 'BNDES1', 'cliente': 'CONSTRUTORA AMIGA SA', 'cnpj': CNPJ_AMIGA,
-        'valor_contratado_reais': '10000000,00', 'data_da_contratacao': '2024-01-01',
-        'produto': 'FINEM', 'uf': 'DF'
-    }]
-    pd.DataFrame(bndes).to_csv(os.path.join(bndes_dir, "operacoes_2024.csv"), index=False, sep=';')
-
-def generate_pncp_data():
+def generate_pncp_data(empresas):
     print("Gerando dados do PNCP...")
+
     pncp_dir = os.path.join(DATA_DIR, "pncp_csv")
     os.makedirs(pncp_dir, exist_ok=True)
 
+    itens = []
+    contratos = []
+    empenhos = []
+
+    for idx, e in enumerate(empresas):
+
+        contrato_id = f"C{idx}"
+        empenho_id = f"E{idx}"
+
+        # ─────────────────────────────────────────
+        # CONTRATOS (varia por cenário)
+        # ─────────────────────────────────────────
+
+        # cenário 0 → contrato alto (suspeito)
+        if e["cenario"] == 0:
+            valor = "500000"
+
+        # cenário 1 → fracionamento
+        elif e["cenario"] == 1:
+            valor = str(random.randint(10000, 70000))
+
+        else:
+            valor = str(random.randint(50000, 200000))
+
+        contratos.append({
+            "id": contrato_id,
+            "receita_despesa": "Despesa",
+            "numero": f"{idx:05d}/2025",
+            "orgao_codigo": "14000",
+            "orgao_nome": "MINISTERIO DA SAUDE",
+            "unidade_codigo": "070009",
+            "esfera": "Federal",
+            "poder": "Executivo",
+            "sisg": "Nao",
+            "gestao": "00001",
+            "unidade_nome_resumido": "MS",
+            "unidade_nome": "MINISTERIO DA SAUDE",
+            "unidade_origem_codigo": "070009",
+            "unidade_origem_nome": "MINISTERIO DA SAUDE",
+            "fornecedor_tipo": "JURIDICA",
+            "fonecedor_cnpj_cpf_idgener": e["cnpj"],
+            "fornecedor_nome": e["razao_social"],
+            "codigo_tipo": "50",
+            "tipo": "Contrato",
+            "categoria": "Compras",
+            "processo": f"PROC-{idx}",
+            "objeto": "AQUISICAO DE EQUIPAMENTOS",
+            "fundamento_legal": "",
+            "informacao_complementar": "",
+            "codigo_modalidade": "05",
+            "modalidade": "Pregao",
+            "unidade_compra": "070009",
+            "licitacao_numero": f"{90000+idx}/2025",
+            "data_assinatura": "2026-01-01",
+            "data_publicacao": "2026-01-02",
+            "vigencia_inicio": "2026-01-01",
+            "vigencia_fim": "2030-01-01",
+            "valor_inicial": valor,
+            "valor_global": valor,
+            "num_parcelas": "1",
+            "valor_parcela": valor,
+            "valor_acumulado": "0.0",
+            "situacao": "Ativo"
+        })
+
+        # ─────────────────────────────────────────
+        # ITENS (sempre gera)
+        # ─────────────────────────────────────────
+
+        itens.append({
+            'id_contratacao_pncp': contrato_id,
+            'numero_item': '1',
+            'ni_fornecedor': e["cnpj"],
+            'nome_razao_social_fornecedor': e["razao_social"],
+            'quantidade_homologada': '100',
+            'valor_unitario_homologado': str(round(float(valor)/100, 2)),
+            'orgao_entidade_cnpj': '00000000000191'
+        })
+
+        # ─────────────────────────────────────────
+        # EMPENHOS (ligados ao contrato)
+        # ─────────────────────────────────────────
+
+        empenhos.append({
+            "id": empenho_id,
+            "unidade": "580003",
+            "unidade_nome": "SUBSECRETARIA DE GESTAO",
+            "gestao": "00001",
+            "numero_empenho": f"2026NE{idx:06d}",
+            "data_emissao": "2026-03-01",
+            "cpf_cnpj_credor": e["cnpj"],
+            "credor": e["razao_social"],
+            "fonte_recurso": "1000000000",
+            "ptres": "",
+            "modalidade_licitacao_siafi": "",
+            "naturezadespesa": "339040",
+            "naturezadespesa_descricao": "SERVICOS DE TI",
+            "planointerno": "ADMPA",
+            "planointerno_descricao": "OPERACAO ADMINISTRATIVA",
+            "valor_empenhado": valor,
+            "valor_aliquidar": "0",
+            "valor_liquidado": "0",
+            "valor_pago": "0",
+            "valor_rpinscrito": "0",
+            "valor_rpaliquidar": "0",
+            "valor_rpaliquidado": "0",
+            "valor_rppago": "0",
+            "informacao_complementar": "",
+            "sistema_origem": "COMPRASNET",
+            "contrato_id": contrato_id,
+            "created_at": "2026-03-01",
+            "updated_at": "2026-03-01",
+            "id_cipi": ""
+        })
+
     # ─────────────────────────────────────────
-    # ITENS (já existia)
+    # SALVAR CSVs
     # ─────────────────────────────────────────
-    itens = [{
-        'id_contratacao_pncp': '2024-1',
-        'numero_item': '1',
-        'ni_fornecedor': CNPJ_FACHADA,
-        'nome_razao_social_fornecedor': 'EMPRESA FACHADA LTDA',
-        'quantidade_homologada': '100',
-        'valor_unitario_homologado': '1000.00',
-        'orgao_entidade_cnpj': '00394460000141'
-    }]
 
     pd.DataFrame(itens).to_csv(
         os.path.join(pncp_dir, "itens.csv"),
@@ -334,91 +271,12 @@ def generate_pncp_data():
         encoding='utf-8'
     )
 
-    # ─────────────────────────────────────────
-    # CONTRATOS
-    # ─────────────────────────────────────────
-    contratos = [{
-        "id": "C1",
-        "receita_despesa": "Despesa",
-        "numero": "00065/2025",
-        "orgao_codigo": "14000",
-        "orgao_nome": "JUSTICA ELEITORAL",
-        "unidade_codigo": "070009",
-        "esfera": "Federal",
-        "poder": "Judiciario",
-        "sisg": "Nao",
-        "gestao": "00001",
-        "unidade_nome_resumido": "TRE/PB",
-        "unidade_nome": "TRIBUNAL REGIONAL ELEITORAL DA PARAIBA",
-        "unidade_origem_codigo": "070009",
-        "unidade_origem_nome": "TRIBUNAL REGIONAL ELEITORAL DA PARAIBA",
-        "fornecedor_tipo": "JURIDICA",
-        "fonecedor_cnpj_cpf_idgener": CNPJ_FACHADA,
-        "fornecedor_nome": "EMPRESA FACHADA LTDA",
-        "codigo_tipo": "50",
-        "tipo": "Contrato",
-        "categoria": "Compras",
-        "processo": "0008512-65.2024.6.15.8000",
-        "objeto": "AQUISICAO DE EQUIPAMENTOS DE TI",
-        "fundamento_legal": "",
-        "informacao_complementar": "",
-        "codigo_modalidade": "05",
-        "modalidade": "Pregao",
-        "unidade_compra": "070009",
-        "licitacao_numero": "90001/2025",
-        "data_assinatura": "2026-01-14",
-        "data_publicacao": "2026-01-15",
-        "vigencia_inicio": "2026-01-14",
-        "vigencia_fim": "2031-01-14",
-        "valor_inicial": "466441.8",
-        "valor_global": "466441.8",
-        "num_parcelas": "1",
-        "valor_parcela": "466441.8",
-        "valor_acumulado": "0.0",
-        "situacao": "Ativo"
-    }]
-
     pd.DataFrame(contratos).to_csv(
         os.path.join(pncp_dir, "contratos.csv"),
         index=False,
         sep=',',
         encoding='utf-8'
     )
-
-    # ─────────────────────────────────────────
-    # EMPENHOS
-    # ─────────────────────────────────────────
-    empenhos = [{
-        "id": "E1",
-        "unidade": "580003",
-        "unidade_nome": "SUBSECRETARIA DE GESTAO E ADMINISTRACAO",
-        "gestao": "00001",
-        "numero_empenho": "2026NE000083",
-        "data_emissao": "2026-03-11",
-        "cpf_cnpj_credor": CNPJ_FACHADA,
-        "credor": "EMPRESA FACHADA LTDA",
-        "fonte_recurso": "1000000000",
-        "ptres": "",
-        "modalidade_licitacao_siafi": "",
-        "naturezadespesa": "339040",
-        "naturezadespesa_descricao": "SERVICOS DE TI",
-        "planointerno": "ADMPA",
-        "planointerno_descricao": "OPERACAO ADMINISTRATIVA",
-        "valor_empenhado": "22242.63",
-        "valor_aliquidar": "16048.7",
-        "valor_liquidado": "1521.32",
-        "valor_pago": "4672.61",
-        "valor_rpinscrito": "0",
-        "valor_rpaliquidar": "0",
-        "valor_rpaliquidado": "0",
-        "valor_rppago": "0",
-        "informacao_complementar": "",
-        "sistema_origem": "COMPRASNET",
-        "contrato_id": "C1",  # ligação com contratos
-        "created_at": "2026-03-11",
-        "updated_at": "2026-03-19",
-        "id_cipi": ""
-    }]
 
     pd.DataFrame(empenhos).to_csv(
         os.path.join(pncp_dir, "empenhos.csv"),
@@ -427,18 +285,180 @@ def generate_pncp_data():
         encoding='utf-8'
     )
 
-def generate_servidores_data():
+# ─────────────────────────────────────────
+# SANÇÕES
+# ─────────────────────────────────────────
+
+def generate_sancoes_data(empresas):
+    print("Gerando sanções...")
+
+    dir_ = os.path.join(DATA_DIR, "sancoes_cgu")
+    os.makedirs(dir_, exist_ok=True)
+
+    rows = []
+
+    for e in empresas:
+        if e["cenario"] == 0:
+            rows.append({
+                "cpf_cnpj": e["cnpj"],
+                "tipo_sancao": "Inidoneidade"
+            })
+
+    pd.DataFrame(rows).to_csv(os.path.join(dir_, "ceis.csv"), index=False)
+
+# ─────────────────────────────────────────
+# BNDES
+# ─────────────────────────────────────────
+
+def generate_bndes_data(empresas):
+    print("Gerando dados do BNDES...")
+
+    bndes_dir = os.path.join(DATA_DIR, "bndes")
+    os.makedirs(bndes_dir, exist_ok=True)
+
+    rows = []
+
+    for i, e in enumerate(empresas):
+
+        # ─────────────────────────────────────────
+        # CENÁRIO 0 → financiamento alto suspeito
+        # ─────────────────────────────────────────
+        if e["cenario"] == 0:
+            rows.append({
+                "_id": f"BNDES_{i}",
+                "cliente": e["razao_social"],
+                "cnpj": e["cnpj"],
+                "valor_contratado_reais": "9000000,00",
+                "data_da_contratacao": "2024-01-01",
+                "produto": "FINEM",
+                "uf": "DF"
+            })
+
+        # ─────────────────────────────────────────
+        # CENÁRIO 1 → múltiplos contratos médios (fragmentação)
+        # ─────────────────────────────────────────
+        elif e["cenario"] == 1:
+            for j in range(3):
+                rows.append({
+                    "_id": f"BNDES_{i}_{j}",
+                    "cliente": e["razao_social"],
+                    "cnpj": e["cnpj"],
+                    "valor_contratado_reais": f"{random.randint(500000, 2000000)},00",
+                    "data_da_contratacao": f"2024-0{j+1}-01",
+                    "produto": "FINAME",
+                    "uf": "DF"
+                })
+
+        # ─────────────────────────────────────────
+        # CENÁRIO 2 → empresa com sócio servidor (baixo valor)
+        # ─────────────────────────────────────────
+        elif e["cenario"] == 2:
+            rows.append({
+                "_id": f"BNDES_{i}",
+                "cliente": e["razao_social"],
+                "cnpj": e["cnpj"],
+                "valor_contratado_reais": "300000,00",
+                "data_da_contratacao": "2024-03-01",
+                "produto": "MICROCREDITO",
+                "uf": "DF"
+            })
+
+        # ─────────────────────────────────────────
+        # OUTROS CENÁRIOS → eventualmente sem financiamento
+        # ─────────────────────────────────────────
+        else:
+            if random.random() < 0.3:
+                rows.append({
+                    "_id": f"BNDES_{i}",
+                    "cliente": e["razao_social"],
+                    "cnpj": e["cnpj"],
+                    "valor_contratado_reais": f"{random.randint(100000, 800000)},00",
+                    "data_da_contratacao": "2024-05-01",
+                    "produto": "CAPITAL DE GIRO",
+                    "uf": "DF"
+                })
+
+    pd.DataFrame(rows).to_csv(
+        os.path.join(bndes_dir, "operacoes_2024.csv"),
+        index=False,
+        sep=';',
+        encoding='utf-8'
+    )
+
+    print(f"✓ BNDES registros: {len(rows)}")
+
+# ─────────────────────────────────────────
+# SERVIDORES
+# ─────────────────────────────────────────
+
+def generate_servidores_data(empresas):
     print("Gerando dados de Servidores...")
+
     serv_dir = os.path.join(DATA_DIR, "servidores", "2024", "01")
     os.makedirs(serv_dir, exist_ok=True)
-    
-    cad = [{
-        'id_servidor': 'S1', 'cpf': CPF_MARIA, 'nome': 'MARIA SERVIDORA',
-        'cargo': 'ANALISTA', 'org_exercicio': 'MINISTERIO DA SAUDE', 'uf_exercicio': 'DF'
-    }]
-    pd.DataFrame(cad).to_csv(os.path.join(serv_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
 
-def generate_emendas_cgu_data(qtd=1000):
+    rows = []
+
+    # ─────────────────────────────────────────
+    # BASE FIXA (mantém compatibilidade)
+    # ─────────────────────────────────────────
+    rows.append({
+        'id_servidor': 'S_BASE',
+        'cpf': CPF_MARIA,
+        'nome': 'MARIA SERVIDORA',
+        'cargo': 'ANALISTA',
+        'org_exercicio': 'MINISTERIO DA SAUDE',
+        'uf_exercicio': 'DF'
+    })
+
+    # ─────────────────────────────────────────
+    # GERAR VARIAÇÕES (ligação com cenários)
+    # ─────────────────────────────────────────
+    for i, e in enumerate(empresas):
+
+        # cenário 2 → empresa com sócio servidor
+        if e["cenario"] == 2:
+            rows.append({
+                'id_servidor': f'S{i}',
+                'cpf': '11111111111',  # mesmo CPF usado em sócio
+                'nome': f'SERVIDOR_VINCULADO_{i}',
+                'cargo': random.choice(['ANALISTA', 'GESTOR', 'DIRETOR']),
+                'org_exercicio': 'MINISTERIO DA SAUDE',
+                'uf_exercicio': 'DF'
+            })
+
+        # outros cenários → ruído (dados normais)
+        elif random.random() < 0.2:
+            rows.append({
+                'id_servidor': f'S{i}',
+                'cpf': "".join([str(random.randint(0, 9)) for _ in range(11)]),
+                'nome': f'SERVIDOR_{i}',
+                'cargo': random.choice(['TECNICO', 'ANALISTA']),
+                'org_exercicio': random.choice([
+                    'MINISTERIO DA SAUDE',
+                    'MINISTERIO DA EDUCACAO',
+                    'MINISTERIO DA JUSTICA'
+                ]),
+                'uf_exercicio': random.choice(['DF', 'SP', 'RJ'])
+            })
+
+    # ─────────────────────────────────────────
+    # SALVAR (mantendo padrão original)
+    # ─────────────────────────────────────────
+    pd.DataFrame(rows).to_csv(
+        os.path.join(serv_dir, "cadastro.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8-sig'
+    )
+
+    print(f"✓ Servidores gerados: {len(rows)}")
+
+# ─────────────────────────────────────────
+# EMENDAS
+# ─────────────────────────────────────────
+
+def generate_emendas_cgu_data(empresas):
     print("Gerando dados de emendas CGU...")
 
     base_dir = os.path.join(DATA_DIR, "emendas_cgu")
@@ -448,15 +468,15 @@ def generate_emendas_cgu_data(qtd=1000):
     convenios = []
     despesas = []
 
-    for i in range(qtd):
+    for i, e in enumerate(empresas):
+
+        # gerar apenas para cenários relevantes
+        if e["cenario"] not in [3, 4]:
+            continue
+
         cod_emenda = f"2026{str(i).zfill(6)}"
         cod_autor = str(random.randint(1000, 9999))
-        nome_autor = random.choice([
-            "DELEGADO EDER MAURO",
-            "JOAO SILVA",
-            "MARIA SOUZA",
-            "CARLOS OLIVEIRA"
-        ])
+        nome_autor = "POLITICO TESTE"
 
         cod_funcao = random.choice(["10", "12", "15"])
         nome_funcao = {
@@ -467,7 +487,9 @@ def generate_emendas_cgu_data(qtd=1000):
 
         cod_programa = str(random.randint(5000, 5999))
 
-        # ── EMENDAS ─────────────────────
+        # ─────────────────────────────────────────
+        # EMENDAS
+        # ─────────────────────────────────────────
         emendas.append({
             "Código da Emenda": cod_emenda,
             "Ano da Emenda": "2026",
@@ -491,7 +513,7 @@ def generate_emendas_cgu_data(qtd=1000):
             "Nome Ação": "AÇÃO TESTE",
             "Código Plano Orçamentário": "0000",
             "Nome Plano Orçamentário": "PLANO TESTE",
-            "Valor Empenhado": str(round(random.uniform(1000, 1000000), 2)).replace(".", ","),
+            "Valor Empenhado": str(round(random.uniform(10000, 500000), 2)).replace(".", ","),
             "Valor Liquidado": "0,00",
             "Valor Pago": "0,00",
             "Valor Restos A Pagar Inscritos": "0,00",
@@ -499,8 +521,10 @@ def generate_emendas_cgu_data(qtd=1000):
             "Valor Restos A Pagar Pagos": "0,00",
         })
 
-        # ── CONVÊNIO (50% das emendas) ──
-        if random.random() < 0.5:
+        # ─────────────────────────────────────────
+        # CONVÊNIOS (mais frequente em cenário 4)
+        # ─────────────────────────────────────────
+        if e["cenario"] == 4 or random.random() < 0.5:
             num_conv = str(random.randint(800000, 999999))
 
             convenios.append({
@@ -515,13 +539,13 @@ def generate_emendas_cgu_data(qtd=1000):
                 "Convenente": "PREFEITURA DE SERRA",
                 "Objeto Convênio": "AQUISIÇÃO DE EQUIPAMENTOS",
                 "Número Convênio": num_conv,
-                "Valor Convênio": str(round(random.uniform(10000, 500000), 2)).replace(".", ","),
+                "Valor Convênio": str(round(random.uniform(10000, 300000), 2)).replace(".", ","),
             })
 
-        # ── DESPESAS ────────────────────
-        for _ in range(random.randint(1, 3)):
-            cnpj = "".join([str(random.randint(0, 9)) for _ in range(14)])
-
+        # ─────────────────────────────────────────
+        # DESPESAS (ligadas à empresa do cenário)
+        # ─────────────────────────────────────────
+        for _ in range(random.randint(2, 5)):
             despesas.append({
                 "Código da Emenda": cod_emenda,
                 "Código do Autor da Emenda": cod_autor,
@@ -529,16 +553,18 @@ def generate_emendas_cgu_data(qtd=1000):
                 "Número da emenda": str(i).zfill(4),
                 "Tipo de Emenda": "Emenda Individual",
                 "Ano/Mês": "202604",
-                "Código do Favorecido": cnpj,
-                "Favorecido": f"EMPRESA {cnpj[:4]} LTDA",
+                "Código do Favorecido": e["cnpj"],  # 🔗 vínculo direto com empresa
+                "Favorecido": e["razao_social"],
                 "Natureza Jurídica": "Sociedade Empresária Limitada",
                 "Tipo Favorecido": "Pessoa Jurídica",
                 "UF Favorecido": "ES",
                 "Município Favorecido": "SERRA",
-                "Valor Recebido": str(round(random.uniform(100, 10000), 2)).replace(".", ","),
+                "Valor Recebido": str(round(random.uniform(1000, 20000), 2)).replace(".", ","),
             })
 
-    # ── SALVAR CSVs ────────────────────
+    # ─────────────────────────────────────────
+    # SALVAR (mantendo padrão original)
+    # ─────────────────────────────────────────
     pd.DataFrame(emendas).to_csv(os.path.join(base_dir, "emendas.csv"), index=False)
     pd.DataFrame(convenios).to_csv(os.path.join(base_dir, "convenios.csv"), index=False)
     pd.DataFrame(despesas).to_csv(os.path.join(base_dir, "por_favorecido.csv"), index=False)
@@ -547,22 +573,267 @@ def generate_emendas_cgu_data(qtd=1000):
     print(f"✓ Convênios: {len(convenios)}")
     print(f"✓ Despesas: {len(despesas)}")
 
+# ─────────────────────────────────────────
+# CAMARA
+# ─────────────────────────────────────────
+
+def generate_camara_data(empresas):
+    print("Gerando dados da Câmara (CSV)...")
+
+    camara_dir = os.path.join(DATA_DIR, "camara")
+    os.makedirs(camara_dir, exist_ok=True)
+
+    rows = []
+
+    for i, e in enumerate(empresas):
+
+        # ─────────────────────────────────────────
+        # CENÁRIO 4 → uso de verba parlamentar (suspeito)
+        # ─────────────────────────────────────────
+        if e["cenario"] == 4:
+            for j in range(random.randint(3, 8)):
+                rows.append({
+                    "despesa_id": f"CAM_{i}_{j}",
+                    "tipo_despesa": "DIVULGACAO",
+                    "valor_liquido": str(random.randint(2000, 8000)) + ".00",
+                    "data_emissao": f"2024-{(j%12)+1:02d}-01",
+                    "ano": "2024",
+                    "mes": str((j % 12) + 1),
+                    "cnpj_fornecedor": e["cnpj"],  # 🔗 vínculo com empresa
+                    "nome_fornecedor": e["razao_social"],
+                    "partido": "PTST",
+                    "uf": "DF",
+                    "nome_parlamentar": "DEPUTADO INFLUENTE",
+                    "fonte_nome": "Câmara dos Deputados"
+                })
+
+        # ─────────────────────────────────────────
+        # OUTROS CENÁRIOS → ruído (dados normais)
+        # ─────────────────────────────────────────
+        elif random.random() < 0.15:
+            rows.append({
+                "despesa_id": f"CAM_{i}",
+                "tipo_despesa": random.choice(["DIVULGACAO", "COMBUSTIVEL", "CONSULTORIA"]),
+                "valor_liquido": str(random.randint(500, 4000)) + ".00",
+                "data_emissao": "2024-01-01",
+                "ano": "2024",
+                "mes": "1",
+                "cnpj_fornecedor": "".join([str(random.randint(0, 9)) for _ in range(14)]),
+                "nome_fornecedor": "FORNECEDOR GENERICO",
+                "partido": random.choice(["PT", "PL", "UNI", "PSD"]),
+                "uf": random.choice(["DF", "SP", "RJ"]),
+                "nome_parlamentar": random.choice([
+                    "DEPUTADO TESTE",
+                    "PARLAMENTAR X",
+                    "POLITICO Y"
+                ]),
+                "fonte_nome": "Câmara dos Deputados"
+            })
+
+    # ─────────────────────────────────────────
+    # SALVAR (padrão original)
+    # ─────────────────────────────────────────
+    pd.DataFrame(rows).to_csv(
+        os.path.join(camara_dir, "despesas_2024.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8-sig'
+    )
+
+    print(f"✓ Despesas Câmara: {len(rows)}")
+
+# ─────────────────────────────────────────
+# TSE
+# ─────────────────────────────────────────
+def generate_tse_data(empresas):
+    print("Gerando dados do TSE...")
+
+    tse_dir = os.path.join(DATA_DIR, "tse", "2022")
+    os.makedirs(tse_dir, exist_ok=True)
+
+    # ─────────────────────────────────────────
+    # CANDIDATOS (mantém estrutura original)
+    # ─────────────────────────────────────────
+    candidatos = [{
+        'ANO_ELEICAO': '2022',
+        'SG_UF': 'DF',
+        'SQ_CANDIDATO': '10001',
+        'NR_CPF_CANDIDATO': CPF_POLITICO,
+        'NM_CANDIDATO': 'POLITICO INFLUENTE',
+        'SG_PARTIDO': 'PTST',
+        'DS_CARGO': 'SENADOR'
+    }]
+
+    pd.DataFrame(candidatos).to_csv(
+        os.path.join(tse_dir, "candidatos_2022.csv"),
+        index=False,
+        sep=';'
+    )
+
+    # ─────────────────────────────────────────
+    # DOAÇÕES (agora com empresas por cenário)
+    # ─────────────────────────────────────────
+    doacoes = []
+
+    for e in empresas:
+
+        # cenário 5 → empresa doando (suspeito)
+        if e["cenario"] == 5:
+            doacoes.append({
+                'ANO_ELEICAO': '2022',
+                'SQ_CANDIDATO': '10001',
+                'NR_CPF_DOADOR': e["cnpj"],  # empresa como doadora (intencional)
+                'NM_DOADOR': e["razao_social"],
+                'VR_RECEITA': '50000,00',
+                'DT_RECEITA': '01/09/2022'
+            })
+
+    # mantém também 1 doador "normal" (baseline)
+    doacoes.append({
+        'ANO_ELEICAO': '2022',
+        'SQ_CANDIDATO': '10001',
+        'NR_CPF_DOADOR': CPF_JOAO,
+        'NM_DOADOR': 'JOAO DOADOR',
+        'VR_RECEITA': '50000,00',
+        'DT_RECEITA': '01/09/2022'
+    })
+
+    pd.DataFrame(doacoes).to_csv(
+        os.path.join(tse_dir, "doacoes_2022.csv"),
+        index=False,
+        sep=';'
+    )
+
+def generate_senado_data(empresas):
+    print("Gerando dados do Senado Federal (CSV)...")
+
+    senado_dir = os.path.join(DATA_DIR, "senado")
+    os.makedirs(senado_dir, exist_ok=True)
+
+    data = []
+
+    # ─────────────────────────────────────────
+    # GARANTE EMPRESAS BASE SEGURAS
+    # ─────────────────────────────────────────
+    emp_base_0 = next((e for e in empresas if e["cenario"] == 0), empresas[0])
+    emp_base_1 = next((e for e in empresas if e["cenario"] == 0 and e != emp_base_0), empresas[1] if len(empresas) > 1 else empresas[0])
+
+    # ─────────────────────────────────────────
+    # BASE FIXA (compatível com layout original)
+    # ─────────────────────────────────────────
+    base_senado = [
+        {
+            "COD_SENADOR": "5967",
+            "NOME_SENADOR": "ANGELO CORONEL",
+            "TIPO_DESPESA": "Combustíveis",
+            "CPF_CNPJ_FORNECEDOR": emp_base_0["cnpj"],
+            "NOME_FORNECEDOR": "AUTO POSTO BRASIL LTDA",
+            "VALOR_REEMBOLSADO": "261,03"
+        },
+        {
+            "COD_SENADOR": "1234",
+            "NOME_SENADOR": "SENADOR TESTE",
+            "TIPO_DESPESA": "Hospedagem",
+            "CPF_CNPJ_FORNECEDOR": emp_base_1["cnpj"],
+            "NOME_FORNECEDOR": "HOTEL CENTRAL",
+            "VALOR_REEMBOLSADO": "1.200,50"
+        }
+    ]
+
+    # ─────────────────────────────────────────
+    # DADOS BASE (ruído)
+    # ─────────────────────────────────────────
+    for i in range(TOTAL_EMPRESAS * 2):
+        for sen in base_senado:
+            row = sen.copy()
+            row.update({
+                "ID": f"999{i}{random.randint(100,999)}",
+                "ANO": "2024",
+                "MÊS": str((i % 12) + 1),
+                "DATA": f"2024-{(i % 12)+1:02d}-01",
+                "fonte_nome": "Senado Federal"
+            })
+            data.append(row)
+
+    # ─────────────────────────────────────────
+    # CENÁRIO 4 → vínculo forte
+    # ─────────────────────────────────────────
+    for i, e in enumerate(empresas):
+        if e["cenario"] == 4:
+            for j in range(random.randint(3, 6)):
+                data.append({
+                    "COD_SENADOR": "9999",
+                    "NOME_SENADOR": "SENADOR INFLUENTE",
+                    "TIPO_DESPESA": random.choice(["Divulgação", "Consultoria", "Serviços"]),
+                    "CPF_CNPJ_FORNECEDOR": e["cnpj"],
+                    "NOME_FORNECEDOR": e["razao_social"],
+                    "VALOR_REEMBOLSADO": f"{random.randint(1000, 8000)},00",
+                    "ID": f"SEN_{i}_{j}",
+                    "ANO": "2024",
+                    "MÊS": str((j % 12) + 1),
+                    "DATA": f"2024-{(j % 12)+1:02d}-01",
+                    "fonte_nome": "Senado Federal"
+                })
+
+    # ─────────────────────────────────────────
+    # OUTROS CENÁRIOS → ruído leve
+    # ─────────────────────────────────────────
+    for i, e in enumerate(empresas):
+        if e["cenario"] != 4 and random.random() < 0.1:
+            data.append({
+                "COD_SENADOR": str(random.randint(1000, 9999)),
+                "NOME_SENADOR": "SENADOR ALEATORIO",
+                "TIPO_DESPESA": "Combustíveis",
+                "CPF_CNPJ_FORNECEDOR": rand_cnpj(),
+                "NOME_FORNECEDOR": "FORNECEDOR GENERICO",
+                "VALOR_REEMBOLSADO": f"{random.randint(100, 1000)},00",
+                "ID": f"SEN_R_{i}",
+                "ANO": "2024",
+                "MÊS": "1",
+                "DATA": "2024-01-01",
+                "fonte_nome": "Senado Federal"
+            })
+
+    # ─────────────────────────────────────────
+    # SALVAR (padrão original)
+    # ─────────────────────────────────────────
+    pd.DataFrame(data).to_csv(
+        os.path.join(senado_dir, "despesas_2024.csv"),
+        index=False,
+        sep=',',
+        encoding='utf-8-sig'
+    )
+
+    print(f"✓ Despesas Senado: {len(data)}")
+
+# ─────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────
+
 if __name__ == "__main__":
-    # Limpar e recriar
+
     if os.path.exists(DATA_DIR):
         for item in os.listdir(DATA_DIR):
-            if item not in ["cnpj", "siafi"]: # Preserva o que o usuário pediu
-                shutil.rmtree(os.path.join(DATA_DIR, item), ignore_errors=True)
-                
-    generate_cnpj_data()
+            path = os.path.join(DATA_DIR, item)
+            try:
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+            except Exception as e:
+                print(f"[WARN] {e}")
+
+    empresas = generate_empresas()
+
+    generate_cnpj_data(empresas)
     generate_ibge_data()
-    generate_senado_data()
-    generate_camara_data()
-    generate_tse_data()
-    generate_sancoes_data()
-    generate_bndes_data()
-    generate_pncp_data()
-    generate_servidores_data()
-    generate_emendas_cgu_data()
-    
-    print("\nDados sintéticos realistas gerados com sucesso!")
+    generate_pncp_data(empresas)
+    generate_sancoes_data(empresas)
+    generate_bndes_data(empresas)
+    generate_servidores_data(empresas)
+    generate_emendas_cgu_data(empresas)
+    generate_camara_data(empresas)
+    generate_senado_data(empresas)
+    generate_tse_data(empresas)
+
+    print("✓ Dados sintéticos com cenários gerados!")
