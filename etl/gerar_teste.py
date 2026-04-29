@@ -390,7 +390,7 @@ def generate_tesouro_transparente_data():
 
 def generate_servidores_cgu_data():
     print("Gerando dados de servidores (CGU)...")
-    cgu_dir = os.path.join(DATA_DIR, "servidores")
+    cgu_dir = os.path.join(DATA_DIR, "servidores", "2026", "01")
     os.makedirs(cgu_dir, exist_ok=True)
 
     cadastro_data = []
