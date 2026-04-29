@@ -68,7 +68,7 @@ def generate_ibge_data():
         'fonte_descricao': ['', ''], 
         'fonte_licenca': ['', ''], 
         'fonte_coletado_em': ['', '']
-    }).to_csv(os.path.join(ibge_dir, "regioes.csv"), index=False, sep=',', encoding='utf-8-sig')
+    }).to_csv(os.path.join(ibge_dir, "regioes.csv"), index=False, sep=',', encoding='utf-8')
 
     # Estados
     pd.DataFrame({
@@ -81,7 +81,7 @@ def generate_ibge_data():
         'fonte_descricao': [''], 
         'fonte_licenca': [''], 
         'fonte_coletado_em': ['']
-    }).to_csv(os.path.join(ibge_dir, "estados.csv"), index=False, sep=',', encoding='utf-8-sig')
+    }).to_csv(os.path.join(ibge_dir, "estados.csv"), index=False, sep=',', encoding='utf-8')
 
     # Mesorregiões
     pd.DataFrame({
@@ -93,7 +93,7 @@ def generate_ibge_data():
         'fonte_descricao': [''], 
         'fonte_licenca': [''], 
         'fonte_coletado_em': ['']
-    }).to_csv(os.path.join(ibge_dir, "mesorregioes.csv"), index=False, sep=',', encoding='utf-8-sig')
+    }).to_csv(os.path.join(ibge_dir, "mesorregioes.csv"), index=False, sep=',', encoding='utf-8')
 
     # Microrregiões
     pd.DataFrame({
@@ -105,7 +105,7 @@ def generate_ibge_data():
         'fonte_descricao': [''], 
         'fonte_licenca': [''], 
         'fonte_coletado_em': ['']
-    }).to_csv(os.path.join(ibge_dir, "microrregioes.csv"), index=False, sep=',', encoding='utf-8-sig')
+    }).to_csv(os.path.join(ibge_dir, "microrregioes.csv"), index=False, sep=',', encoding='utf-8')
 
     # Municípios
     pd.DataFrame({
@@ -117,7 +117,7 @@ def generate_ibge_data():
         'fonte_descricao': [''], 
         'fonte_licenca': [''], 
         'fonte_coletado_em': ['']
-    }).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False, sep=',', encoding='utf-8-sig')
+    }).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False, sep=',', encoding='utf-8')
 
 def generate_cnpj_data():
     print("Gerando dados de CNPJ...")
@@ -125,12 +125,12 @@ def generate_cnpj_data():
     os.makedirs(snapshot_dir, exist_ok=True)
 
     # Domínios (fixos)
-    pd.DataFrame({'codigo_cnae': ['0000000'], 'descricao_cnae': ['ATIVIDADE TESTE']}).to_csv(os.path.join(snapshot_dir, "cnaes.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame({'codigo_natureza': ['2062'], 'descricao_natureza': ['SOCIEDADE LIMITADA']}).to_csv(os.path.join(snapshot_dir, "naturezas.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame({'codigo_qualificacao': ['05'], 'descricao_qualificacao': ['ADMINISTRADOR']}).to_csv(os.path.join(snapshot_dir, "qualificacoes.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame({'codigo_motivo': ['00'], 'descricao_motivo': ['SEM MOTIVO']}).to_csv(os.path.join(snapshot_dir, "motivos.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame({'codigo_municipio_rf': ['9701'], 'nome_municipio': ['BRASILIA']}).to_csv(os.path.join(snapshot_dir, "municipios_rf.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame({'codigo_pais': ['105'], 'nome_pais': ['BRASIL']}).to_csv(os.path.join(snapshot_dir, "paises.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame({'codigo_cnae': ['0000000'], 'descricao_cnae': ['ATIVIDADE TESTE']}).to_csv(os.path.join(snapshot_dir, "cnaes.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame({'codigo_natureza': ['2062'], 'descricao_natureza': ['SOCIEDADE LIMITADA']}).to_csv(os.path.join(snapshot_dir, "naturezas.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame({'codigo_qualificacao': ['05'], 'descricao_qualificacao': ['ADMINISTRADOR']}).to_csv(os.path.join(snapshot_dir, "qualificacoes.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame({'codigo_motivo': ['00'], 'descricao_motivo': ['SEM MOTIVO']}).to_csv(os.path.join(snapshot_dir, "motivos.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame({'codigo_municipio_rf': ['9701'], 'nome_municipio': ['BRASILIA']}).to_csv(os.path.join(snapshot_dir, "municipios_rf.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame({'codigo_pais': ['105'], 'nome_pais': ['BRASIL']}).to_csv(os.path.join(snapshot_dir, "paises.csv"), index=False, sep=';', encoding='utf-8')
 
     # Empresas (multiplicadas)
     empresas_data = []
@@ -207,9 +207,9 @@ def generate_cnpj_data():
                 'faixa_etaria': '0'
             })
 
-    pd.DataFrame(empresas_data).to_csv(os.path.join(snapshot_dir, "empresas.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(estab_data).to_csv(os.path.join(snapshot_dir, "estabelecimentos.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(socios_data).to_csv(os.path.join(snapshot_dir, "socios.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(empresas_data).to_csv(os.path.join(snapshot_dir, "empresas.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(estab_data).to_csv(os.path.join(snapshot_dir, "estabelecimentos.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(socios_data).to_csv(os.path.join(snapshot_dir, "socios.csv"), index=False, sep=';', encoding='utf-8')
 
 def generate_tse_data():
     print("Gerando dados do TSE...")
@@ -242,7 +242,8 @@ def generate_tse_data():
                 'SG_PARTIDO': cand['partido'], 'NM_PARTIDO': 'PARTIDO DE TESTE', 'NR_PARTIDO': '10',
                 'DT_NASCIMENTO': '01/01/1970', 'DS_GENERO': 'MASCULINO', 'DS_GRAU_INSTRUCAO': 'SUPERIOR COMPLETO',
                 'DS_ESTADO_CIVIL': 'CASADO(A)', 'DS_COR_RACA': 'BRANCA', 'CD_OCUPACAO': '100', 'DS_OCUPACAO': 'OUTROS',
-                'DS_SITUACAO_CANDIDATURA': 'APTO', 'CD_SITUACAO_CANDIDATURA': '12'
+                'DS_SITUACAO_CANDIDATURA': 'APTO', 'CD_SITUACAO_CANDIDATURA': '12', 'DS_NACIONALIDADE': 'BRASILEIRA',
+                'CD_MUNICIPIO_NASCIMENTO': '5300108'
             })
 
     base_doadores = [
@@ -259,8 +260,8 @@ def generate_tse_data():
                 'VR_RECEITA': f'{random.randint(1000, 100000)},00', 'DT_RECEITA': '01/10/2022', 'DS_RECEITA': 'DOACAO'
             })
 
-    pd.DataFrame(candidatos_data).to_csv(os.path.join(ano_dir_cand, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(doacoes_data).to_csv(os.path.join(ano_dir_doac, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(candidatos_data).to_csv(os.path.join(ano_dir_cand, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(doacoes_data).to_csv(os.path.join(ano_dir_doac, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8')
 
 def generate_cgu_data():
     print("Gerando dados da CGU...")
@@ -292,7 +293,7 @@ def generate_cgu_data():
         'Valor Restos a Pagar Cancelado': ['0,00'],
         'Valor Restos a Pagar Pago': ['0,00']
     })
-    emendas.to_csv(os.path.join(cgu_dir, "emendas.csv"), index=False, sep=';', encoding='utf-8-sig')
+    emendas.to_csv(os.path.join(cgu_dir, "emendas.csv"), index=False, sep=';', encoding='utf-8')
 
     # Sanções (CEIS)
     sancoes_dir = os.path.join(DATA_DIR, "sancoes_cgu")
@@ -310,7 +311,7 @@ def generate_cgu_data():
         'numero_processo': ['123'],
         'valor_multa': ['0,00']
     })
-    sancoes.to_csv(os.path.join(sancoes_dir, "ceis.csv"), index=False, sep=';', encoding='utf-8-sig')
+    sancoes.to_csv(os.path.join(sancoes_dir, "ceis.csv"), index=False, sep=';', encoding='utf-8')
 
 def generate_pncp_data():
     print("Gerando dados do PNCP...")
@@ -357,9 +358,9 @@ def generate_pncp_data():
                 'valor_total': f'{random.randint(10000, 2000000)},00'
             })
 
-    pd.DataFrame(itens_data).to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(contratos_data).to_csv(os.path.join(pncp_dir, "contratos.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(empenhos_data).to_csv(os.path.join(pncp_dir, "empenhos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(itens_data).to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(contratos_data).to_csv(os.path.join(pncp_dir, "contratos.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(empenhos_data).to_csv(os.path.join(pncp_dir, "empenhos.csv"), index=False, sep=';', encoding='utf-8')
 
 def generate_tesouro_transparente_data():
     print("Gerando dados do Tesouro Transparente...")
@@ -391,7 +392,7 @@ def generate_tesouro_transparente_data():
         os.path.join(tt_dir, "emendas.csv"),
         index=False,
         sep=';',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
 def generate_servidores_cgu_data():
@@ -450,8 +451,8 @@ def generate_servidores_cgu_data():
                 "outras_verbas": "0"
             })
 
-    pd.DataFrame(cadastro_data).to_csv(os.path.join(cgu_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
-    pd.DataFrame(remuneracao_data).to_csv(os.path.join(cgu_dir, "remuneracao.csv"), index=False, sep=',', encoding='utf-8-sig')
+    pd.DataFrame(cadastro_data).to_csv(os.path.join(cgu_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8')
+    pd.DataFrame(remuneracao_data).to_csv(os.path.join(cgu_dir, "remuneracao.csv"), index=False, sep=',', encoding='utf-8')
 
 def generate_sancoes_cgu_data():
     print("Gerando dados de sanções CGU (compatível com pipeline)...")
@@ -480,7 +481,7 @@ def generate_sancoes_cgu_data():
         os.path.join(sancoes_dir, "ceis.csv"),
         index=False,
         sep=',',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
     # CNEP
@@ -504,7 +505,7 @@ def generate_sancoes_cgu_data():
         os.path.join(sancoes_dir, "cnep.csv"),
         index=False,
         sep=',',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
 # Removida função duplicada generate_pgfn_data() - mantida a versão abaixo
@@ -534,7 +535,7 @@ def generate_pgfn_data():
         os.path.join(pgfn_dir, "divida_ativa_2024.csv"),
         index=False,
         sep=',',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
 def generate_camara_data():
@@ -572,7 +573,7 @@ def generate_camara_data():
         os.path.join(camara_dir, "despesas_2024.csv"),
         index=False,
         sep=',',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
 def generate_bndes_data():
@@ -626,7 +627,7 @@ def generate_bndes_data():
         os.path.join(bndes_dir, "operacoes_2024.csv"),
         index=False,
         sep=';',
-        encoding='utf-8-sig'
+        encoding='utf-8'
     )
 
 def generate_siafi_data():
@@ -645,7 +646,7 @@ def generate_siafi_data():
         'fonte_nome': ['Siafi'] * 2,
         'fonte_url': ['https://siafi.tesouro.gov.br'] * 2
     })
-    unidades.to_csv(os.path.join(siafi_dir, "unidades_gestoras.csv"), index=False, sep=';', encoding='utf-8-sig')
+    unidades.to_excel(os.path.join(siafi_dir, "unidades.xlsx"), index=False)
 
 def generate_senado_data():
     print("Gerando dados do Senado Federal (JSON - CEAP)...")
