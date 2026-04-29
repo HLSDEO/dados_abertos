@@ -28,7 +28,7 @@ from pipeline.lib import wait_for_neo4j, run_batches, iter_csv, IngestionRun, ap
 
 log = logging.getLogger(__name__)
 
-DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[2] / "data")) / "tse"
+DATA_DIR   = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data")) / "tse"
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE",  "20000"))
 BATCH      = int(os.environ.get("NEO4J_BATCH", "500"))
 
@@ -391,7 +391,26 @@ def _load_candidatos(driver, data_dir: Path,
     if eleicoes:
         todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
     if not todos:
-        log.warning("  Nenhum arquivo candidatos_*.csv encontrado (verifique --eleicao)")
+        base_path = data_dir.resolve()
+        existe = base_path.exists()
+
+        arquivos_existentes = []
+        if existe:
+            try:
+                arquivos_existentes = [p.name for p in base_path.iterdir()]
+            except Exception as e:
+                arquivos_existentes = [f"<erro ao listar: {e}>"]
+
+        log.warning(
+            "\n".join([
+                "[TSE] Nenhum arquivo de candidatos encontrado",
+                f"  → path buscado: {base_path}",
+                f"  → diretório existe: {existe}",
+                f"  → padrão glob: candidatos_*.csv",
+                f"  → filtro de eleição: {eleicoes}",
+                f"  → arquivos no diretório: {arquivos_existentes[:10]}",
+            ])
+        )
         return
     if stats is None:
         stats = {'total': 0}
