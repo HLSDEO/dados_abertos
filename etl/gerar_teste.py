@@ -69,7 +69,8 @@ def generate_cnpj_data(empresas):
             "cnpj": e["cnpj"],
             "nome_fantasia": e["razao_social"],
             "uf": "DF",
-            "municipio": MUNICIPIO_BRASILIA
+            "municipio_cod": MUNICIPIO_BRASILIA,
+            "municipio_nome": "Brasília"
         })
 
         cpf = rand_cpf()
