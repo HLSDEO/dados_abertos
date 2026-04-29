@@ -15,7 +15,9 @@ Saída:
 Arquivos já existentes são pulados (idempotente).
 
 Uso:
-  python main.py download pgfn
+  python main.py download pgfn                        # todos os anos (2020–2025)
+  python main.py download pgfn --ano 2024             # só 2024
+  python main.py download pgfn --ano 2023 --ano 2024  # 2023 e 2024
 """
 
 import csv
@@ -179,13 +181,37 @@ def _process_zip(tmp: Path, url: str, competencia: str, out_path: Path) -> int:
 
 # ── Entry-point ───────────────────────────────────────────────────────────────
 
-def run():
+def run(anos: list[int] | None = None):
+    """
+    anos: lista de anos a baixar (ex: [2024] ou [2023, 2024]).
+          Se None, baixa o intervalo completo ANO_INICIO–ANO_FIM.
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Resolve o conjunto de anos a iterar
+    if anos:
+        anos_validos = sorted(
+            (a for a in anos if ANO_INICIO <= a <= ANO_FIM),
+            reverse=True,   # mais recente primeiro, igual ao comportamento padrão
+        )
+        anos_invalidos = [a for a in anos if not (ANO_INICIO <= a <= ANO_FIM)]
+        if anos_invalidos:
+            log.warning(
+                f"[pgfn] Anos fora do intervalo suportado ({ANO_INICIO}–{ANO_FIM}) "
+                f"e serão ignorados: {anos_invalidos}"
+            )
+        if not anos_validos:
+            log.error("[pgfn] Nenhum ano válido para baixar. Abortando.")
+            return
+        log.info(f"[pgfn] Baixando apenas: {anos_validos}")
+    else:
+        anos_validos = list(range(ANO_FIM, ANO_INICIO - 1, -1))  # mais recente primeiro
+        log.info(f"[pgfn] Baixando intervalo completo: {ANO_INICIO}–{ANO_FIM}")
 
     total_baixados = 0
     total_pulados  = 0
 
-    for ano in range(ANO_FIM, ANO_INICIO - 1, -1):   # mais recente primeiro
+    for ano in anos_validos:
         for tri in TRIMESTRES:
             competencia  = f"{ano}_t{tri}"
             path_prefix  = f"{ano}_trimestre_{tri}"
