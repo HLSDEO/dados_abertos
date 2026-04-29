@@ -27,6 +27,136 @@ UF_DF = "DF"
 # Multiplicador para volume de dados
 MULT = 5
 
+def generate_cnpj_data():
+    print("Gerando dados de CNPJ (Receita Federal)...")
+
+    snapshot = "2024-01"
+    base_dir = os.path.join(DATA_DIR, "cnpj", snapshot, "csv")
+    os.makedirs(base_dir, exist_ok=True)
+
+    # ─────────────────────────────────────────
+    # EMPRESAS
+    # ─────────────────────────────────────────
+    empresas = [{
+        "cnpj_basico": CNPJ_FACHADA[:8],
+        "razao_social": "EMPRESA FACHADA LTDA",
+        "natureza_juridica": "2062",
+        "qualificacao_responsavel": "49",
+        "capital_social": "100000.00",
+        "porte_empresa": "01",
+        "ente_federativo": "",
+        "fonte_snapshot": snapshot
+    }]
+
+    pd.DataFrame(empresas).to_csv(
+        os.path.join(base_dir, "empresas.csv"),
+        index=False,
+        encoding="utf-8"
+    )
+
+    # ─────────────────────────────────────────
+    # ESTABELECIMENTOS
+    # ─────────────────────────────────────────
+    estabelecimentos = [{
+        "cnpj_basico": CNPJ_FACHADA[:8],
+        "cnpj": CNPJ_FACHADA,
+        "nome_fantasia": "FACHADA TECH",
+        "situacao_cadastral": "02",
+        "data_situacao_cadastral": "20240101",
+        "data_inicio_atividade": "20200101",
+        "cnae_principal": "6201501",
+        "uf": "DF",
+        "cep": "70000000",
+        "logradouro": "RUA FICTICIA",
+        "numero": "100",
+        "bairro": "CENTRO",
+        "email": "contato@fachada.com",
+        "municipio": MUNICIPIO_BRASILIA
+    }]
+
+    pd.DataFrame(estabelecimentos).to_csv(
+        os.path.join(base_dir, "estabelecimentos.csv"),
+        index=False,
+        encoding="utf-8"
+    )
+
+    # ─────────────────────────────────────────
+    # SOCIOS
+    # ─────────────────────────────────────────
+    socios = [
+        {
+            "cnpj_basico": CNPJ_FACHADA[:8],
+            "identificador_socio": "2",  # PF
+            "nome_socio": "JOAO SOCIO",
+            "cpf_cnpj_socio": CPF_JOAO,
+            "qualificacao_socio": "49",
+            "data_entrada": "20200101",
+            "faixa_etaria": "4"
+        },
+        {
+            "cnpj_basico": CNPJ_FACHADA[:8],
+            "identificador_socio": "2",
+            "nome_socio": "CPF MASCARADO",
+            "cpf_cnpj_socio": "***123***00",
+            "qualificacao_socio": "49",
+            "data_entrada": "20200101",
+            "faixa_etaria": "3"
+        }
+    ]
+
+    pd.DataFrame(socios).to_csv(
+        os.path.join(base_dir, "socios.csv"),
+        index=False,
+        encoding="utf-8"
+    )
+
+    # ─────────────────────────────────────────
+    # SIMPLES
+    # ─────────────────────────────────────────
+    simples = [{
+        "cnpj_basico": CNPJ_FACHADA[:8],
+        "opcao_simples": "S",
+        "data_opcao_simples": "20200101",
+        "data_exclusao_simples": "",
+        "opcao_mei": "N",
+        "data_opcao_mei": "",
+        "data_exclusao_mei": ""
+    }]
+
+    pd.DataFrame(simples).to_csv(
+        os.path.join(base_dir, "simples.csv"),
+        index=False,
+        encoding="utf-8"
+    )
+
+    # ─────────────────────────────────────────
+    # TABELAS DE DOMÍNIO (OBRIGATÓRIAS!)
+    # ─────────────────────────────────────────
+    pd.DataFrame([{
+        "codigo_cnae": "6201501",
+        "descricao_cnae": "Desenvolvimento de software"
+    }]).to_csv(os.path.join(base_dir, "cnaes.csv"), index=False)
+
+    pd.DataFrame([{
+        "codigo_natureza": "2062",
+        "descricao_natureza": "Sociedade Empresária Limitada"
+    }]).to_csv(os.path.join(base_dir, "naturezas.csv"), index=False)
+
+    pd.DataFrame([{
+        "codigo_qualificacao": "49",
+        "descricao_qualificacao": "Sócio-Administrador"
+    }]).to_csv(os.path.join(base_dir, "qualificacoes.csv"), index=False)
+
+    pd.DataFrame([{
+        "codigo_municipio_rf": MUNICIPIO_BRASILIA,
+        "nome_municipio": "BRASILIA"
+    }]).to_csv(os.path.join(base_dir, "municipios_rf.csv"), index=False)
+
+    pd.DataFrame([{
+        "codigo_pais": "105",
+        "nome_pais": "BRASIL"
+    }]).to_csv(os.path.join(base_dir, "paises.csv"), index=False)
+
 # Funções auxiliares para variações
 def vary_name(name):
     variations = [
@@ -314,7 +444,8 @@ if __name__ == "__main__":
         for item in os.listdir(DATA_DIR):
             if item not in ["cnpj", "siafi"]: # Preserva o que o usuário pediu
                 shutil.rmtree(os.path.join(DATA_DIR, item), ignore_errors=True)
-    
+                
+    generate_cnpj_data()
     generate_ibge_data()
     generate_senado_data()
     generate_camara_data()
