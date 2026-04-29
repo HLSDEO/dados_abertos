@@ -56,5 +56,4 @@ def get_contrato(
         "empenhos": empenhos,
     }
     cache_set_json(cache_key, payload, ttl_seconds=_CONTRATO_CACHE_TTL)
-    return payload</content>
-<parameter name="filePath">C:\Git\dados_abertos\api\routers\contrato.py
+    return payload
