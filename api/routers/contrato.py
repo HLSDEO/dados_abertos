@@ -61,26 +61,12 @@ def get_contrato(
             contrato_id=contrato_id, offset=offset, limit=limit,
         ).data()
 
-        itens = run_query(
-            s,
-            """
-            MATCH (c:ContratoComprasNet {contrato_id: $contrato_id})<-[:REFERE_SE]-(e:Empenho)<-[:PAGO_POR]-(ir:ItemResultado)
-            RETURN ir.item_id AS id, ir.descricao AS descricao, ir.quantidade AS quantidade,
-                   ir.valor_unitario AS valor_unitario, ir.valor_total AS valor_total
-            ORDER BY ir.valor_total DESC
-            SKIP $offset
-            LIMIT $limit
-            """,
-            contrato_id=contrato_id, offset=offset, limit=limit,
-        ).data()
-
     payload = {
         "pagination": {"limit": limit, "offset": offset},
         "contrato": contrato,
         "fornecedor": fornecedor,
         "orgao": orgao,
         "empenhos": empenhos,
-        "itens": itens,
     }
     cache_set_json(cache_key, payload, ttl_seconds=_CONTRATO_CACHE_TTL)
     return payload</content>
