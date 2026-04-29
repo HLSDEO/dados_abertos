@@ -6,6 +6,22 @@ from datetime import datetime
 # Configuração de pastas
 DATA_DIR = "data"
 
+# IDs padronizados para interconexões
+CPF_JOAO = "11111111111"
+CPF_MARIA = "22222222222"
+CPF_JOSE = "33333333333"
+CPF_POLITICO = "99988877766"
+
+CNPJ_FACHADA = "11111111000100"
+CNPJ_AMIGA = "22222222000100"
+CNPJ_SUSPEITOS = "33333333000199"
+CNPJ_XYZ = "12345678000199"
+CNPJ_HOTEL = "22345678000100"
+CNPJ_GRAFICA = "32345678000100"
+
+MUNICIPIO_BRASILIA = "9701"
+UF_DF = "DF"
+
 def generate_ibge_data():
     print("Gerando dados do IBGE...")
     ibge_dir = os.path.join(DATA_DIR, "ibge")
@@ -87,7 +103,7 @@ def generate_cnpj_data():
 
     # Empresas
     empresas = pd.DataFrame({
-        'cnpj_basico': ['11111111', '22222222', '33333333'],
+        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8]],
         'razao_social': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'SUPRIMENTOS SUSPEITOS ME'],
         'natureza_juridica': ['2062', '2054', '2135'],
         'qualificacao_responsavel': ['05', '05', '05'],
@@ -99,7 +115,7 @@ def generate_cnpj_data():
 
     # Estabelecimentos
     estab = pd.DataFrame({
-        'cnpj_basico': ['11111111', '22222222', '33333333'],
+        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8]],
         'cnpj_ordem': ['0001', '0001', '0001'],
         'cnpj_dv': ['00', '00', '99'],
         'identificador_matriz_filial': ['1', '1', '1'],
@@ -118,8 +134,8 @@ def generate_cnpj_data():
         'complemento': ['', '', ''],
         'bairro': ['CENTRO', 'CENTRO', 'CENTRO'],
         'cep': ['00000000', '00000000', '00000000'],
-        'uf': ['DF', 'DF', 'DF'],
-        'municipio': ['9701', '9701', '9701'],
+        'uf': [UF_DF, UF_DF, UF_DF],
+        'municipio': [MUNICIPIO_BRASILIA, MUNICIPIO_BRASILIA, MUNICIPIO_BRASILIA],
         'ddd_1': ['', '', ''], 'telefone_1': ['', '', ''],
         'ddd_2': ['', '', ''], 'telefone_2': ['', '', ''],
         'ddd_fax': ['', '', ''], 'fax': ['', '', ''],
@@ -130,16 +146,16 @@ def generate_cnpj_data():
 
     # Sócios
     socios = pd.DataFrame({
-        'cnpj_basico': ['11111111', '22222222', '33333333'],
-        'identificador_socio': ['2', '2', '2'],
-        'nome_socio': ['JOAO SERVIDOR PUBLICO', 'MARIA DOADORA CAMPANHA', 'JOSE BENEFICIARIO AUXILIO'],
-        'cpf_cnpj_socio': ['11111111111', '22222222222', '33333333333'],
-        'qualificacao_socio': ['49', '49', '49'],
-        'data_entrada': ['20200101', '20180515', '20211010'],
-        'cpf_representante_legal': ['00000000000', '00000000000', '00000000000'],
-        'nome_representante': ['', '', ''],
-        'qualificacao_representante_legal': ['00', '00', '00'],
-        'faixa_etaria': ['0', '0', '0']
+        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8], CNPJ_AMIGA[:8]],
+        'identificador_socio': ['2', '2', '2', '2'],
+        'nome_socio': ['JOAO SERVIDOR PUBLICO', 'MARIA DOADORA CAMPANHA', 'JOSE BENEFICIARIO AUXILIO', 'POLITICO INFLUENTE'],
+        'cpf_cnpj_socio': [CPF_JOAO, CPF_MARIA, CPF_JOSE, CPF_POLITICO],
+        'qualificacao_socio': ['49', '49', '49', '49'],
+        'data_entrada': ['20200101', '20180515', '20211010', '20200101'],
+        'cpf_representante_legal': ['00000000000', '00000000000', '00000000000', '00000000000'],
+        'nome_representante': ['', '', '', ''],
+        'qualificacao_representante_legal': ['00', '00', '00', '00'],
+        'faixa_etaria': ['0', '0', '0', '0']
     })
     socios.to_csv(os.path.join(snapshot_dir, "socios.csv"), index=False, sep=';', encoding='utf-8-sig')
 
@@ -153,11 +169,11 @@ def generate_tse_data():
         'ANO_ELEICAO': ['2022'],
         'CD_TIPO_ELEICAO': ['2'], 'NM_TIPO_ELEICAO': ['ELEICAO ORDINARIA'], 'NR_TURNO': ['1'],
         'CD_ELEICAO': ['546'], 'DS_ELEICAO': ['Eleições Gerais Estaduais 2022'], 'DT_ELEICAO': ['02/10/2022'],
-        'SG_UF': ['DF'], 'SG_UE': ['DF'], 'NM_UE': ['DISTRITO FEDERAL'],
+        'SG_UF': [UF_DF], 'SG_UE': [UF_DF], 'NM_UE': ['DISTRITO FEDERAL'],
         'CD_CARGO': ['6'], 'DS_CARGO': ['DEPUTADO FEDERAL'], 'SQ_CANDIDATO': ['10001'],
         'NR_CANDIDATO': ['1010'], 'NM_CANDIDATO': ['POLITICO INFLUENTE'], 'NM_URNA_CANDIDATO': ['POLITICO'],
         'NR_TITULO_ELEITORAL_CANDIDATO': ['123456789012'],
-        'NR_CPF_CANDIDATO': ['99988877766'],
+        'NR_CPF_CANDIDATO': [CPF_POLITICO],
         'SG_PARTIDO': ['PTST'], 'NM_PARTIDO': ['PARTIDO DE TESTE'], 'NR_PARTIDO': ['10'],
         'DT_NASCIMENTO': ['01/01/1970'], 'DS_GENERO': ['MASCULINO'], 'DS_GRAU_INSTRUCAO': ['SUPERIOR COMPLETO'],
         'DS_ESTADO_CIVIL': ['CASADO(A)'], 'DS_COR_RACA': ['BRANCA'], 'CD_OCUPACAO': ['100'], 'DS_OCUPACAO': ['OUTROS'],
@@ -168,8 +184,8 @@ def generate_tse_data():
     # Doações (2022)
     doacoes = pd.DataFrame({
         'ANO_ELEICAO': ['2022'],
-        'SQ_CANDIDATO': ['10001'], 'NR_CPF_CANDIDATO': ['99988877766'], 'NM_CANDIDATO': ['POLITICO INFLUENTE'],
-        'NR_CPF_DOADOR': ['22222222222'], 'NM_DOADOR': ['MARIA DOADORA CAMPANHA'],
+        'SQ_CANDIDATO': ['10001'], 'NR_CPF_CANDIDATO': [CPF_POLITICO], 'NM_CANDIDATO': ['POLITICO INFLUENTE'],
+        'NR_CPF_DOADOR': [CPF_MARIA], 'NM_DOADOR': ['MARIA DOADORA CAMPANHA'],
         'VR_RECEITA': ['50000,00'], 'DT_RECEITA': ['01/10/2022'], 'DS_RECEITA': ['DOACAO']
     })
     doacoes.to_csv(os.path.join(tse_dir, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
@@ -210,13 +226,13 @@ def generate_cgu_data():
     sancoes_dir = os.path.join(DATA_DIR, "sancoes_cgu")
     os.makedirs(sancoes_dir, exist_ok=True)
     sancoes = pd.DataFrame({
-        'cpf_cnpj': ['33333333000199'],
+        'cpf_cnpj': [CNPJ_SUSPEITOS],
         'nome': ['SUPRIMENTOS SUSPEITOS ME'],
         'tipo_sancao': ['Inidoneidade'],
         'data_inicio': ['01/01/2023'],
         'data_fim': ['01/01/2025'],
         'orgao_sancionador': ['PREFEITURA DE TESTE'],
-        'uf_orgao': ['DF'],
+        'uf_orgao': [UF_DF],
         'esfera_governo': ['MUNICIPAL'],
         'fundamentacao': ['TESTE'],
         'numero_processo': ['123'],
@@ -233,13 +249,13 @@ def generate_pncp_data():
     itens = pd.DataFrame({
         'id_contratacao_pncp': ['2024-001', '2024-002', '2024-003'],
         'numero_item_pncp': ['1', '1', '1'],
-        'ni_fornecedor': ['11111111000100', '22222222000100', '11111111000100'],
+        'ni_fornecedor': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_FACHADA],
         'tipo_pessoa': ['PJ', 'PJ', 'PJ'],
         'nome_razao_social_fornecedor': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'EMPRESA FACHADA LTDA'],
         'quantidade_homologada': ['1', '1', '1'],
         'valor_unitario_homologado': ['150000,00', '2000000,00', '300000,00'],
         'orgao_entidade_cnpj': ['00000000000100', '00000000000100', '00000000000100'],
-        'unidade_orgao_uf_sigla': ['DF', 'DF', 'DF'],
+        'unidade_orgao_uf_sigla': [UF_DF, UF_DF, UF_DF],
         'municipio_nome': ['BRASILIA', 'BRASILIA', 'BRASILIA']
     })
     itens.to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';', encoding='utf-8-sig')
@@ -248,7 +264,7 @@ def generate_pncp_data():
     contratos = pd.DataFrame({
         'id': ['C001', 'C002', 'C003'],
         'numero': ['001/2024', '002/2024', '003/2024'],
-        'fonecedor_cnpj_cpf_idgener': ['11111111000100', '22222222000100', '11111111000100'],
+        'fonecedor_cnpj_cpf_idgener': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_FACHADA],
         'fornecedor_nome': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'EMPRESA FACHADA LTDA'],
         'valor_global': ['150000,00', '2000000,00', '300000,00'],
         'data_assinatura': ['2024-01-10', '2024-02-15', '2024-03-20'],
@@ -280,7 +296,7 @@ def generate_tesouro_transparente_data():
         'programa': ['PROGRAMA SAUDE', 'PROGRAMA EDUCACAO', 'PROGRAMA OBRAS'],
         'acao': ['ACAO 1', 'ACAO 2', 'ACAO 3'],
         'localidade': ['BRASILIA', 'BRASILIA', 'GOIANIA'],
-        'uf': ['DF', 'DF', 'GO'],
+        'uf': [UF_DF, UF_DF, 'GO'],
         'valor_empenhado': ['1000000.00', '500000.00', '2000000.00'],
         'valor_liquidado': ['800000.00', '400000.00', '1500000.00'],
         'valor_pago': ['800000.00', '400000.00', '1200000.00'],
@@ -305,7 +321,7 @@ def generate_servidores_cgu_data():
 
     cadastro = pd.DataFrame({
         "id_servidor": ["1", "2", "3"],
-        "cpf": ["11111111111", "22222222222", "33333333333"],
+        "cpf": [CPF_JOAO, CPF_MARIA, CPF_JOSE],
         "nome": ["JOAO SILVA", "MARIA SOUZA", "CARLOS OLIVEIRA"],
         "cargo": ["ANALISTA", "ASSESSOR", "TECNICO"],
         "classe": ["A", "B", "C"],
@@ -319,7 +335,7 @@ def generate_servidores_cgu_data():
         "jornada_trabalho": ["40h"] * 3,
         "data_ingresso_orgao": ["2015-03-10", "2019-07-22", "2021-01-05"],
         "data_ingresso_servico": ["2015-03-10", "2019-07-22", "2021-01-05"],
-        "uf_exercicio": ["DF", "DF", "GO"],
+        "uf_exercicio": [UF_DF, UF_DF, "GO"],
         "municipio_exercicio": ["BRASILIA", "BRASILIA", "GOIANIA"],
         "cd_uasg": ["1001", "1002", "1003"],
         "fonte_categoria": ["CGU"] * 3,
@@ -327,7 +343,7 @@ def generate_servidores_cgu_data():
         "fonte_url": ["https://portaldatransparencia.gov.br"] * 3
     })
 
-    cadastro.to_csv(cgu_dir / "cadastro.csv", index=False)
+    cadastro.to_csv(os.path.join(cgu_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
 
     remuneracao = pd.DataFrame({
         "id_servidor": ["1", "2", "3"],
@@ -346,7 +362,7 @@ def generate_servidores_cgu_data():
         "outras_verbas": ["0", "0", "0"]
     })
 
-    remuneracao.to_csv(cgu_dir / "remuneracao.csv", index=False)
+    remuneracao.to_csv(os.path.join(cgu_dir, "remuneracao.csv"), index=False, sep=',', encoding='utf-8-sig')
 
 def generate_sancoes_cgu_data():
     print("Gerando dados de sanções CGU (compatível com pipeline)...")
@@ -402,37 +418,7 @@ def generate_sancoes_cgu_data():
         encoding='utf-8-sig'
     )
 
-def generate_pgfn_data():
-    print("Gerando dados da PGFN (Dívida Ativa)...")
-    pgfn_dir = os.path.join(DATA_DIR, "pgfn")
-    os.makedirs(pgfn_dir, exist_ok=True)
-
-    dividas = pd.DataFrame({
-        'cpf_cnpj': ['12345678000199', '98765432000188', '11111111111'],
-        'tipo_pessoa': ['JURIDICA', 'JURIDICA', 'FISICA'],
-        'nome_devedor': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'JOAO SILVA'],
-        'numero_inscricao': ['DAU001', 'DAU002', 'DAU003'],
-        'tipo_debito': ['TRIBUTARIO', 'NAO_TRIBUTARIO', 'TRIBUTARIO'],
-        'situacao': ['ATIVA', 'PARCELADA', 'ATIVA'],
-        'valor_consolidado': ['1500000.00', '300000.00', '50000.00'],
-        'data_inscricao': ['2020-06-15', '2021-09-10', '2019-03-22'],
-        'uf': ['SP', 'RJ', 'DF'],
-        'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BRASILIA'],
-
-        # Metadados padrão
-        'fonte_nome': ['PGFN - Dívida Ativa da União'] * 3,
-        'fonte_url': ['https://www.gov.br/pgfn'] * 3,
-        'fonte_descricao': ['Cadastro de débitos inscritos em dívida ativa'] * 3,
-        'fonte_licenca': ['CC-BY 4.0'] * 3,
-        'fonte_coletado_em': ['2024-01-01'] * 3
-    })
-
-    dividas.to_csv(
-        os.path.join(pgfn_dir, "divida_ativa.csv"),
-        index=False,
-        sep=';',
-        encoding='utf-8-sig'
-    )
+# Removida função duplicada generate_pgfn_data() - mantida a versão abaixo
 
 def generate_pgfn_data():
     print("Gerando dados da PGFN (compatível com pipeline)...")
@@ -440,8 +426,8 @@ def generate_pgfn_data():
     os.makedirs(pgfn_dir, exist_ok=True)
 
     df = pd.DataFrame({
-        'cpf_cnpj': ['12345678000199', '98765432000188', '11111111111'],
-        'nome_devedor': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'JOAO SILVA'],
+        'cpf_cnpj': [CNPJ_XYZ, CNPJ_AMIGA, CPF_JOAO],
+        'nome_devedor': ['EMPRESA XYZ LTDA', 'CONSTRUTORA AMIGA SA', 'JOAO SILVA'],
         'numero_inscricao': ['DAU001', 'DAU002', 'DAU003'],
         'tipo_credito': ['TRIBUTARIO', 'NAO_TRIBUTARIO', 'TRIBUTARIO'],
         'receita_principal': ['IRPJ', 'MULTA', 'INSS'],
@@ -450,7 +436,7 @@ def generate_pgfn_data():
         'valor_consolidado': ['1500000.00', '300000.00', '50000.00'],
         'data_inscricao': ['2020-06-15', '2021-09-10', '2019-03-22'],
         'indicador_ajuizado': ['SIM', 'NAO', 'SIM'],
-        'uf_devedor': ['SP', 'RJ', 'DF'],
+        'uf_devedor': ['SP', 'RJ', UF_DF],
         'municipio_devedor': ['SAO PAULO', 'RIO DE JANEIRO', 'BRASILIA'],
         'fonte_nome': ['PGFN'] * 3
     })
@@ -471,11 +457,11 @@ def generate_camara_data():
         'despesa_id': ['D001', 'D002', 'D003'],  # CRÍTICO
         'ano': ['2024', '2024', '2024'],
         'mes': ['1', '2', '3'],
-        'nome_parlamentar': ['DEP. JOAO SILVA', 'DEP. MARIA SOUZA', 'DEP. JOAO SILVA'],
-        'partido': ['ABC', 'XYZ', 'ABC'],
-        'uf': ['SP', 'RJ', 'SP'],
-        'nome_fornecedor': ['EMPRESA COMBUSTIVEL LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
-        'cnpj_fornecedor': ['12345678000100', '22345678000100', '32345678000100'],
+        'nome_parlamentar': ['DEP. POLITICO INFLUENTE', 'DEP. MARIA SOUZA', 'DEP. POLITICO INFLUENTE'],
+        'partido': ['PTST', 'XYZ', 'PTST'],
+        'uf': [UF_DF, UF_DF, UF_DF],
+        'nome_fornecedor': ['EMPRESA FACHADA LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
+        'cnpj_fornecedor': [CNPJ_FACHADA, CNPJ_HOTEL, CNPJ_GRAFICA],
         'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
         'valor_liquido': ['800.00', '1500.00', '600.00'],
         'data_emissao': ['2024-01-12', '2024-02-18', '2024-03-22'],
@@ -496,8 +482,8 @@ def generate_bndes_data():
 
     df = pd.DataFrame({
         '_id': ['EMP001', 'EMP002', 'EMP003'],  # CRÍTICO
-        'cnpj': ['12345678000199', '98765432000188', '22334455000166'],
-        'cliente': ['EMPRESA XYZ LTDA', 'EMPRESA ABC SA', 'INDUSTRIA BRASIL LTDA'],
+        'cnpj': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_SUSPEITOS],
+        'cliente': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'SUPRIMENTOS SUSPEITOS ME'],
         'descricao_do_projeto': ['EXPANSAO', 'MODERNIZACAO', 'ENERGIA SOLAR'],
         'uf': ['SP', 'RJ', 'MG'],
         'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BELO HORIZONTE'],
@@ -532,6 +518,24 @@ def generate_bndes_data():
         encoding='utf-8-sig'
     )
 
+def generate_siafi_data():
+    print("Gerando dados do Siafi...")
+    siafi_dir = os.path.join(DATA_DIR, "siafi")
+    os.makedirs(siafi_dir, exist_ok=True)
+
+    # Unidades Gestoras
+    unidades = pd.DataFrame({
+        'codigo_unidade_gestora': ['1001', '1002'],
+        'nome_unidade_gestora': ['UNIDADE GESTORA 1', 'UNIDADE GESTORA 2'],
+        'codigo_orgao': ['10', '20'],
+        'nome_orgao': ['ORGAO TESTE 1', 'ORGAO TESTE 2'],
+        'codigo_esfera': ['1', '2'],
+        'nome_esfera': ['FEDERAL', 'ESTADUAL'],
+        'fonte_nome': ['Siafi'] * 2,
+        'fonte_url': ['https://siafi.tesouro.gov.br'] * 2
+    })
+    unidades.to_csv(os.path.join(siafi_dir, "unidades_gestoras.csv"), index=False, sep=';', encoding='utf-8-sig')
+
 def generate_senado_data():
     print("Gerando dados do Senado Federal (JSON - CEAP)...")
     senado_dir = os.path.join(DATA_DIR, "senado")
@@ -543,12 +547,12 @@ def generate_senado_data():
         {
             "ano": 2024,
             "mes": 1,
-            "cpf_senador": "11111111111",
-            "nome_senador": "SEN. JOAO SILVA",
-            "partido": "ABC",
-            "uf": "SP",
+            "cpf_senador": CPF_POLITICO,
+            "nome_senador": "SEN. POLITICO INFLUENTE",
+            "partido": "PTST",
+            "uf": UF_DF,
             "fornecedor": "AUTO POSTO BRASIL LTDA",
-            "cnpj_fornecedor": "12345678000100",
+            "cnpj_fornecedor": CNPJ_XYZ,
             "tipo_despesa": "COMBUSTIVEL",
             "descricao": "Abastecimento de veículo oficial",
             "valor": 900.00,
@@ -557,12 +561,12 @@ def generate_senado_data():
         {
             "ano": 2024,
             "mes": 2,
-            "cpf_senador": "22222222222",
-            "nome_senador": "SEN. MARIA SOUZA",
-            "partido": "XYZ",
-            "uf": "RJ",
+            "cpf_senador": CPF_JOAO,
+            "nome_senador": "SEN. JOAO SILVA",
+            "partido": "ABC",
+            "uf": UF_DF,
             "fornecedor": "HOTEL CENTRAL LTDA",
-            "cnpj_fornecedor": "22345678000100",
+            "cnpj_fornecedor": CNPJ_HOTEL,
             "tipo_despesa": "HOSPEDAGEM",
             "descricao": "Hospedagem em viagem oficial",
             "valor": 1800.00,
@@ -571,12 +575,12 @@ def generate_senado_data():
         {
             "ano": 2024,
             "mes": 3,
-            "cpf_senador": "11111111111",
-            "nome_senador": "SEN. JOAO SILVA",
-            "partido": "ABC",
-            "uf": "SP",
+            "cpf_senador": CPF_POLITICO,
+            "nome_senador": "SEN. POLITICO INFLUENTE",
+            "partido": "PTST",
+            "uf": UF_DF,
             "fornecedor": "AGENCIA PUBLICIDADE",
-            "cnpj_fornecedor": "32345678000100",
+            "cnpj_fornecedor": CNPJ_GRAFICA,
             "tipo_despesa": "DIVULGACAO",
             "descricao": "Serviços de publicidade",
             "valor": 700.00,
@@ -602,7 +606,7 @@ def generate_senado_data():
 if __name__ == "__main__":
     generate_ibge_data() #ibge
     generate_cnpj_data() #cnpj
-    #siafi
+    generate_siafi_data() #siafi
     generate_servidores_cgu_data() #servidores_cgu
     generate_cgu_data() #emendas_cgu
     generate_tse_data() #tse
