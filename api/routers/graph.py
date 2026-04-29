@@ -40,6 +40,8 @@ def _serialize_node(node) -> dict:
         nome = node.get("ds_eleicao") or ""
     elif label == "BemDeclarado":
         nome = node.get("descricao") or ""
+    elif label == "Contrato":
+        nome = node.get("objeto") or ""
     else:
         nome = node.get("nome") or node.get("razao_social")
         if not nome:

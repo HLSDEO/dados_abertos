@@ -990,6 +990,7 @@ function mountProfilePage(cytoscape) {
           Pessoa: `/pessoa/${encodeURIComponent(nodeId)}`,
           Empresa: `/empresa/${encodeURIComponent(nodeId)}`,
           Parlamentar: `/parlamentar/${encodeURIComponent(nodeId)}`,
+          Contrato: `/contrato/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1050,6 +1051,17 @@ function mountProfilePage(cytoscape) {
               ["UF", parl.uf || "-"],
               ["Emendas", payload.emendas?.length ?? "-"],
               ["Doadores", payload.doadores?.length ?? "-"],
+            ];
+          } else if (nodeLabel === "Contrato") {
+            const c = payload.contrato || {};
+            titleText = c.objeto || titleText;
+            rows = [
+              ["Número", c.numero_contrato || "-"],
+              ["Ano", c.ano_contrato || "-"],
+              ["Valor", fmtCurrency(c.valor_global)],
+              ["Assinatura", fmtDate(c.data_assinatura)],
+              ["Orgão", payload.orgao?.nome || "-"],
+              ["Fornecedor", payload.fornecedor?.nome || "-"],
             ];
           }
 

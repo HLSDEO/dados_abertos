@@ -423,7 +423,7 @@ MERGE (ir)-[:PERTENCE_A]->(g)
 
 Q_CONTRATO_UPSERT = """
 UNWIND $rows AS r
-MERGE (c:ContratoComprasNet:Contrato {contrato_id: r.contrato_id})
+MERGE (c:ContratoComprasNet {contrato_id: r.contrato_id})
   ON CREATE SET c.criado_em = datetime(), c.fonte_nome = r.fonte_nome, c.fonte_url = r.fonte_url
 SET
   c.numero_contrato = r.numero_contrato,
