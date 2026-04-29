@@ -604,10 +604,10 @@ if __name__ == "__main__":
     generate_cnpj_data() #cnpj
     #siafi
     generate_servidores_cgu_data() #servidores_cgu
-    generate_tse_data() #tse
     generate_cgu_data() #emendas_cgu
-    generate_tesouro_transparente_data() #tesouro_transparente
+    generate_tse_data() #tse
     generate_sancoes_cgu_data() #sancoes_cgu
+    generate_tesouro_transparente_data() #tesouro_transparente
     generate_pncp_data() #pncp
     generate_pgfn_data() #pgfn
     generate_camara_data() #camara
