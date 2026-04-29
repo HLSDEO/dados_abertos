@@ -1,12 +1,13 @@
 import pandas as pd
 import os
 import json
+import random
 from datetime import datetime
 
 # Configuração de pastas
 DATA_DIR = "data"
 
-# IDs padronizados para interconexões
+# IDs padronizados para interconexões (base)
 CPF_JOAO = "11111111111"
 CPF_MARIA = "22222222222"
 CPF_JOSE = "33333333333"
@@ -21,6 +22,35 @@ CNPJ_GRAFICA = "32345678000100"
 
 MUNICIPIO_BRASILIA = "9701"
 UF_DF = "DF"
+
+# Multiplicador
+MULT = 10
+
+# Funções auxiliares para variações
+def vary_name(name):
+    variations = [
+        name,
+        name.replace('A', 'Ã'),
+        name.replace('O', 'Ô'),
+        name.upper(),
+        name.lower(),
+        name.split()[0] + ' ' + name.split()[-1][0] + '.',
+    ]
+    return random.choice(variations)
+
+def vary_cpf(cpf):
+    # Variações para Splink: alterar dígitos
+    cpf_list = list(cpf)
+    pos = random.randint(0, len(cpf_list)-1)
+    cpf_list[pos] = str((int(cpf_list[pos]) + 1) % 10)
+    return ''.join(cpf_list)
+
+def vary_cnpj(cnpj):
+    cnpj_list = list(cnpj)
+    pos = random.randint(0, len(cnpj_list)-1)
+    if cnpj_list[pos].isdigit():
+        cnpj_list[pos] = str((int(cnpj_list[pos]) + 1) % 10)
+    return ''.join(cnpj_list)
 
 def generate_ibge_data():
     print("Gerando dados do IBGE...")
@@ -92,8 +122,8 @@ def generate_cnpj_data():
     print("Gerando dados de CNPJ...")
     snapshot_dir = os.path.join(DATA_DIR, "cnpj", "2024-01", "csv")
     os.makedirs(snapshot_dir, exist_ok=True)
-    
-    # Domínios
+
+    # Domínios (fixos)
     pd.DataFrame({'codigo_cnae': ['0000000'], 'descricao_cnae': ['ATIVIDADE TESTE']}).to_csv(os.path.join(snapshot_dir, "cnaes.csv"), index=False, sep=';', encoding='utf-8-sig')
     pd.DataFrame({'codigo_natureza': ['2062'], 'descricao_natureza': ['SOCIEDADE LIMITADA']}).to_csv(os.path.join(snapshot_dir, "naturezas.csv"), index=False, sep=';', encoding='utf-8-sig')
     pd.DataFrame({'codigo_qualificacao': ['05'], 'descricao_qualificacao': ['ADMINISTRADOR']}).to_csv(os.path.join(snapshot_dir, "qualificacoes.csv"), index=False, sep=';', encoding='utf-8-sig')
@@ -101,94 +131,130 @@ def generate_cnpj_data():
     pd.DataFrame({'codigo_municipio_rf': ['9701'], 'nome_municipio': ['BRASILIA']}).to_csv(os.path.join(snapshot_dir, "municipios_rf.csv"), index=False, sep=';', encoding='utf-8-sig')
     pd.DataFrame({'codigo_pais': ['105'], 'nome_pais': ['BRASIL']}).to_csv(os.path.join(snapshot_dir, "paises.csv"), index=False, sep=';', encoding='utf-8-sig')
 
-    # Empresas
-    empresas = pd.DataFrame({
-        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8]],
-        'razao_social': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'SUPRIMENTOS SUSPEITOS ME'],
-        'natureza_juridica': ['2062', '2054', '2135'],
-        'qualificacao_responsavel': ['05', '05', '05'],
-        'capital_social': ['1000,00', '5000000,00', '100,00'],
-        'porte_empresa': ['01', '05', '01'],
-        'ente_federativo': ['', '', '']
-    })
-    empresas.to_csv(os.path.join(snapshot_dir, "empresas.csv"), index=False, sep=';', encoding='utf-8-sig')
+    # Empresas (multiplicadas)
+    empresas_data = []
+    estab_data = []
+    socios_data = []
+    base_empresas = [
+        {'cnpj': CNPJ_FACHADA, 'razao': 'EMPRESA FACHADA LTDA', 'natureza': '2062', 'porte': '01'},
+        {'cnpj': CNPJ_AMIGA, 'razao': 'CONSTRUTORA AMIGA SA', 'natureza': '2054', 'porte': '05'},
+        {'cnpj': CNPJ_SUSPEITOS, 'razao': 'SUPRIMENTOS SUSPEITOS ME', 'natureza': '2135', 'porte': '01'},
+    ]
+    for i in range(MULT):
+        for emp in base_empresas:
+            cnpj_varied = vary_cnpj(emp['cnpj']) if i > 0 else emp['cnpj']
+            empresas_data.append({
+                'cnpj_basico': cnpj_varied[:8],
+                'razao_social': vary_name(emp['razao']) if i > 0 else emp['razao'],
+                'natureza_juridica': emp['natureza'],
+                'qualificacao_responsavel': '05',
+                'capital_social': f'{random.randint(1000, 5000000)},00',
+                'porte_empresa': emp['porte'],
+                'ente_federativo': ''
+            })
+            estab_data.append({
+                'cnpj_basico': cnpj_varied[:8],
+                'cnpj_ordem': '0001',
+                'cnpj_dv': cnpj_varied[-2:],
+                'identificador_matriz_filial': '1',
+                'nome_fantasia': vary_name(emp['razao'].split()[0]),
+                'situacao_cadastral': '02',
+                'data_situacao_cadastral': '20200101',
+                'motivo_situacao_cadastral': '00',
+                'nome_cidade_exterior': '',
+                'pais': '105',
+                'data_inicio_atividade': '20200101',
+                'cnae_fiscal_principal': '0000000',
+                'cnae_fiscal_secundaria': '',
+                'tipo_logradouro': 'RUA',
+                'logradouro': 'TESTE',
+                'numero': str(i+1),
+                'complemento': '',
+                'bairro': 'CENTRO',
+                'cep': '00000000',
+                'uf': UF_DF,
+                'municipio': MUNICIPIO_BRASILIA,
+                'ddd_1': '', 'telefone_1': '',
+                'ddd_2': '', 'telefone_2': '',
+                'ddd_fax': '', 'fax': '',
+                'correio_eletronico': '',
+                'situacao_especial': '', 'data_situacao_especial': ''
+            })
 
-    # Estabelecimentos
-    estab = pd.DataFrame({
-        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8]],
-        'cnpj_ordem': ['0001', '0001', '0001'],
-        'cnpj_dv': ['00', '00', '99'],
-        'identificador_matriz_filial': ['1', '1', '1'],
-        'nome_fantasia': ['FACHADA', 'AMIGA', 'SUSPEITOS'],
-        'situacao_cadastral': ['02', '02', '02'],
-        'data_situacao_cadastral': ['20200101', '20180515', '20211010'],
-        'motivo_situacao_cadastral': ['00', '00', '00'],
-        'nome_cidade_exterior': ['', '', ''],
-        'pais': ['105', '105', '105'],
-        'data_inicio_atividade': ['20200101', '20180515', '20211010'],
-        'cnae_fiscal_principal': ['0000000', '0000000', '0000000'],
-        'cnae_fiscal_secundaria': ['', '', ''],
-        'tipo_logradouro': ['RUA', 'AV', 'RUA'],
-        'logradouro': ['TESTE', 'TESTE', 'TESTE'],
-        'numero': ['1', '2', '3'],
-        'complemento': ['', '', ''],
-        'bairro': ['CENTRO', 'CENTRO', 'CENTRO'],
-        'cep': ['00000000', '00000000', '00000000'],
-        'uf': [UF_DF, UF_DF, UF_DF],
-        'municipio': [MUNICIPIO_BRASILIA, MUNICIPIO_BRASILIA, MUNICIPIO_BRASILIA],
-        'ddd_1': ['', '', ''], 'telefone_1': ['', '', ''],
-        'ddd_2': ['', '', ''], 'telefone_2': ['', '', ''],
-        'ddd_fax': ['', '', ''], 'fax': ['', '', ''],
-        'correio_eletronico': ['', '', ''],
-        'situacao_especial': ['', '', ''], 'data_situacao_especial': ['', '', '']
-    })
-    estab.to_csv(os.path.join(snapshot_dir, "estabelecimentos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    # Sócios (multiplicados e com duplicatas para Splink)
+    base_socios = [
+        {'nome': 'JOAO SERVIDOR PUBLICO', 'cpf': CPF_JOAO, 'cnpj': CNPJ_FACHADA},
+        {'nome': 'MARIA DOADORA CAMPANHA', 'cpf': CPF_MARIA, 'cnpj': CNPJ_AMIGA},
+        {'nome': 'JOSE BENEFICIARIO AUXILIO', 'cpf': CPF_JOSE, 'cnpj': CNPJ_SUSPEITOS},
+        {'nome': 'POLITICO INFLUENTE', 'cpf': CPF_POLITICO, 'cnpj': CNPJ_AMIGA},
+    ]
+    for i in range(MULT):
+        for soc in base_socios:
+            cpf_varied = vary_cpf(soc['cpf']) if i > 0 else soc['cpf']
+            nome_varied = vary_name(soc['nome']) if i > 0 else soc['nome']
+            cnpj_varied = vary_cnpj(soc['cnpj']) if i > 0 else soc['cnpj']
+            socios_data.append({
+                'cnpj_basico': cnpj_varied[:8],
+                'identificador_socio': '2',
+                'nome_socio': nome_varied,
+                'cpf_cnpj_socio': cpf_varied,
+                'qualificacao_socio': '49',
+                'data_entrada': '20200101',
+                'cpf_representante_legal': '00000000000',
+                'nome_representante': '',
+                'qualificacao_representante_legal': '00',
+                'faixa_etaria': '0'
+            })
 
-    # Sócios
-    socios = pd.DataFrame({
-        'cnpj_basico': [CNPJ_FACHADA[:8], CNPJ_AMIGA[:8], CNPJ_SUSPEITOS[:8], CNPJ_AMIGA[:8]],
-        'identificador_socio': ['2', '2', '2', '2'],
-        'nome_socio': ['JOAO SERVIDOR PUBLICO', 'MARIA DOADORA CAMPANHA', 'JOSE BENEFICIARIO AUXILIO', 'POLITICO INFLUENTE'],
-        'cpf_cnpj_socio': [CPF_JOAO, CPF_MARIA, CPF_JOSE, CPF_POLITICO],
-        'qualificacao_socio': ['49', '49', '49', '49'],
-        'data_entrada': ['20200101', '20180515', '20211010', '20200101'],
-        'cpf_representante_legal': ['00000000000', '00000000000', '00000000000', '00000000000'],
-        'nome_representante': ['', '', '', ''],
-        'qualificacao_representante_legal': ['00', '00', '00', '00'],
-        'faixa_etaria': ['0', '0', '0', '0']
-    })
-    socios.to_csv(os.path.join(snapshot_dir, "socios.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(empresas_data).to_csv(os.path.join(snapshot_dir, "empresas.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(estab_data).to_csv(os.path.join(snapshot_dir, "estabelecimentos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(socios_data).to_csv(os.path.join(snapshot_dir, "socios.csv"), index=False, sep=';', encoding='utf-8-sig')
 
 def generate_tse_data():
     print("Gerando dados do TSE...")
     tse_dir = os.path.join(DATA_DIR, "tse")
     os.makedirs(tse_dir, exist_ok=True)
-    
-    # Candidatos (2022)
-    candidatos = pd.DataFrame({
-        'ANO_ELEICAO': ['2022'],
-        'CD_TIPO_ELEICAO': ['2'], 'NM_TIPO_ELEICAO': ['ELEICAO ORDINARIA'], 'NR_TURNO': ['1'],
-        'CD_ELEICAO': ['546'], 'DS_ELEICAO': ['Eleições Gerais Estaduais 2022'], 'DT_ELEICAO': ['02/10/2022'],
-        'SG_UF': [UF_DF], 'SG_UE': [UF_DF], 'NM_UE': ['DISTRITO FEDERAL'],
-        'CD_CARGO': ['6'], 'DS_CARGO': ['DEPUTADO FEDERAL'], 'SQ_CANDIDATO': ['10001'],
-        'NR_CANDIDATO': ['1010'], 'NM_CANDIDATO': ['POLITICO INFLUENTE'], 'NM_URNA_CANDIDATO': ['POLITICO'],
-        'NR_TITULO_ELEITORAL_CANDIDATO': ['123456789012'],
-        'NR_CPF_CANDIDATO': [CPF_POLITICO],
-        'SG_PARTIDO': ['PTST'], 'NM_PARTIDO': ['PARTIDO DE TESTE'], 'NR_PARTIDO': ['10'],
-        'DT_NASCIMENTO': ['01/01/1970'], 'DS_GENERO': ['MASCULINO'], 'DS_GRAU_INSTRUCAO': ['SUPERIOR COMPLETO'],
-        'DS_ESTADO_CIVIL': ['CASADO(A)'], 'DS_COR_RACA': ['BRANCA'], 'CD_OCUPACAO': ['100'], 'DS_OCUPACAO': ['OUTROS'],
-        'DS_SITUACAO_CANDIDATURA': ['APTO'], 'CD_SITUACAO_CANDIDATURA': ['12']
-    })
-    candidatos.to_csv(os.path.join(tse_dir, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
 
-    # Doações (2022)
-    doacoes = pd.DataFrame({
-        'ANO_ELEICAO': ['2022'],
-        'SQ_CANDIDATO': ['10001'], 'NR_CPF_CANDIDATO': [CPF_POLITICO], 'NM_CANDIDATO': ['POLITICO INFLUENTE'],
-        'NR_CPF_DOADOR': [CPF_MARIA], 'NM_DOADOR': ['MARIA DOADORA CAMPANHA'],
-        'VR_RECEITA': ['50000,00'], 'DT_RECEITA': ['01/10/2022'], 'DS_RECEITA': ['DOACAO']
-    })
-    doacoes.to_csv(os.path.join(tse_dir, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
+    candidatos_data = []
+    doacoes_data = []
+    base_candidatos = [
+        {'sq': '10001', 'nome': 'POLITICO INFLUENTE', 'cpf': CPF_POLITICO, 'partido': 'PTST'},
+    ]
+    for i in range(MULT):
+        for cand in base_candidatos:
+            cpf_varied = vary_cpf(cand['cpf']) if i > 0 else cand['cpf']
+            nome_varied = vary_name(cand['nome']) if i > 0 else cand['nome']
+            candidatos_data.append({
+                'ANO_ELEICAO': '2022',
+                'CD_TIPO_ELEICAO': '2', 'NM_TIPO_ELEICAO': 'ELEICAO ORDINARIA', 'NR_TURNO': '1',
+                'CD_ELEICAO': '546', 'DS_ELEICAO': 'Eleições Gerais Estaduais 2022', 'DT_ELEICAO': '02/10/2022',
+                'SG_UF': UF_DF, 'SG_UE': UF_DF, 'NM_UE': 'DISTRITO FEDERAL',
+                'CD_CARGO': '6', 'DS_CARGO': 'DEPUTADO FEDERAL', 'SQ_CANDIDATO': cand['sq'],
+                'NR_CANDIDATO': f'10{i+1:02d}', 'NM_CANDIDATO': nome_varied, 'NM_URNA_CANDIDATO': nome_varied.split()[0],
+                'NR_TITULO_ELEITORAL_CANDIDATO': '123456789012',
+                'NR_CPF_CANDIDATO': cpf_varied,
+                'SG_PARTIDO': cand['partido'], 'NM_PARTIDO': 'PARTIDO DE TESTE', 'NR_PARTIDO': '10',
+                'DT_NASCIMENTO': '01/01/1970', 'DS_GENERO': 'MASCULINO', 'DS_GRAU_INSTRUCAO': 'SUPERIOR COMPLETO',
+                'DS_ESTADO_CIVIL': 'CASADO(A)', 'DS_COR_RACA': 'BRANCA', 'CD_OCUPACAO': '100', 'DS_OCUPACAO': 'OUTROS',
+                'DS_SITUACAO_CANDIDATURA': 'APTO', 'CD_SITUACAO_CANDIDATURA': '12'
+            })
+
+    base_doadores = [
+        {'cpf': CPF_MARIA, 'nome': 'MARIA DOADORA CAMPANHA'},
+    ]
+    for i in range(MULT):
+        for doa in base_doadores:
+            cpf_varied = vary_cpf(doa['cpf']) if i > 0 else doa['cpf']
+            nome_varied = vary_name(doa['nome']) if i > 0 else doa['nome']
+            doacoes_data.append({
+                'ANO_ELEICAO': '2022',
+                'SQ_CANDIDATO': '10001', 'NR_CPF_CANDIDATO': CPF_POLITICO, 'NM_CANDIDATO': 'POLITICO INFLUENTE',
+                'NR_CPF_DOADOR': cpf_varied, 'NM_DOADOR': nome_varied,
+                'VR_RECEITA': f'{random.randint(1000, 100000)},00', 'DT_RECEITA': '01/10/2022', 'DS_RECEITA': 'DOACAO'
+            })
+
+    pd.DataFrame(candidatos_data).to_csv(os.path.join(tse_dir, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(doacoes_data).to_csv(os.path.join(tse_dir, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
 
 def generate_cgu_data():
     print("Gerando dados da CGU...")
@@ -244,42 +310,50 @@ def generate_pncp_data():
     print("Gerando dados do PNCP...")
     pncp_dir = os.path.join(DATA_DIR, "pncp_csv")
     os.makedirs(pncp_dir, exist_ok=True)
-    
-    # Itens
-    itens = pd.DataFrame({
-        'id_contratacao_pncp': ['2024-001', '2024-002', '2024-003'],
-        'numero_item_pncp': ['1', '1', '1'],
-        'ni_fornecedor': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_FACHADA],
-        'tipo_pessoa': ['PJ', 'PJ', 'PJ'],
-        'nome_razao_social_fornecedor': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'EMPRESA FACHADA LTDA'],
-        'quantidade_homologada': ['1', '1', '1'],
-        'valor_unitario_homologado': ['150000,00', '2000000,00', '300000,00'],
-        'orgao_entidade_cnpj': ['00000000000100', '00000000000100', '00000000000100'],
-        'unidade_orgao_uf_sigla': [UF_DF, UF_DF, UF_DF],
-        'municipio_nome': ['BRASILIA', 'BRASILIA', 'BRASILIA']
-    })
-    itens.to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';', encoding='utf-8-sig')
 
-    # Contratos
-    contratos = pd.DataFrame({
-        'id': ['C001', 'C002', 'C003'],
-        'numero': ['001/2024', '002/2024', '003/2024'],
-        'fonecedor_cnpj_cpf_idgener': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_FACHADA],
-        'fornecedor_nome': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'EMPRESA FACHADA LTDA'],
-        'valor_global': ['150000,00', '2000000,00', '300000,00'],
-        'data_assinatura': ['2024-01-10', '2024-02-15', '2024-03-20'],
-        'objeto': ['LIMPEZA', 'OBRA PUBLICA', 'CONSULTORIA']
-    })
-    contratos.to_csv(os.path.join(pncp_dir, "contratos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    itens_data = []
+    contratos_data = []
+    empenhos_data = []
+    base_fornecedores = [
+        {'cnpj': CNPJ_FACHADA, 'nome': 'EMPRESA FACHADA LTDA'},
+        {'cnpj': CNPJ_AMIGA, 'nome': 'CONSTRUTORA AMIGA SA'},
+        {'cnpj': CNPJ_SUSPEITOS, 'nome': 'SUPRIMENTOS SUSPEITOS ME'},
+    ]
+    for i in range(MULT):
+        for forn in base_fornecedores:
+            cnpj_varied = vary_cnpj(forn['cnpj']) if i > 0 else forn['cnpj']
+            nome_varied = vary_name(forn['nome']) if i > 0 else forn['nome']
+            itens_data.append({
+                'id_contratacao_pncp': f'2024-{i+1:03d}',
+                'numero_item_pncp': '1',
+                'ni_fornecedor': cnpj_varied,
+                'tipo_pessoa': 'PJ',
+                'nome_razao_social_fornecedor': nome_varied,
+                'quantidade_homologada': '1',
+                'valor_unitario_homologado': f'{random.randint(10000, 2000000)},00',
+                'orgao_entidade_cnpj': '00000000000100',
+                'unidade_orgao_uf_sigla': UF_DF,
+                'municipio_nome': 'BRASILIA'
+            })
+            contratos_data.append({
+                'id': f'C{i+1:03d}',
+                'numero': f'{i+1:03d}/2024',
+                'fonecedor_cnpj_cpf_idgener': cnpj_varied,
+                'fornecedor_nome': nome_varied,
+                'valor_global': f'{random.randint(10000, 2000000)},00',
+                'data_assinatura': f'2024-01-{i+10:02d}',
+                'objeto': random.choice(['LIMPEZA', 'OBRA PUBLICA', 'CONSULTORIA', 'FORNECIMENTO'])
+            })
+            empenhos_data.append({
+                'id': f'E{i+1:03d}',
+                'numero_empenho': f'EMP{i+1:03d}',
+                'data_emissao': f'2024-01-{i+15:02d}',
+                'valor_total': f'{random.randint(10000, 2000000)},00'
+            })
 
-    # Empenhos
-    empenhos = pd.DataFrame({
-        'id': ['E001', 'E002', 'E003'],
-        'numero_empenho': ['EMP001', 'EMP002', 'EMP003'],
-        'data_emissao': ['2024-01-15', '2024-02-20', '2024-03-25'],
-        'valor_total': ['150000,00', '2000000,00', '300000,00']
-    })
-    empenhos.to_csv(os.path.join(pncp_dir, "empenhos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(itens_data).to_csv(os.path.join(pncp_dir, "itens.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(contratos_data).to_csv(os.path.join(pncp_dir, "contratos.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(empenhos_data).to_csv(os.path.join(pncp_dir, "empenhos.csv"), index=False, sep=';', encoding='utf-8-sig')
 
 def generate_tesouro_transparente_data():
     print("Gerando dados do Tesouro Transparente...")
@@ -319,50 +393,59 @@ def generate_servidores_cgu_data():
     cgu_dir = os.path.join(DATA_DIR, "servidores")
     os.makedirs(cgu_dir, exist_ok=True)
 
-    cadastro = pd.DataFrame({
-        "id_servidor": ["1", "2", "3"],
-        "cpf": [CPF_JOAO, CPF_MARIA, CPF_JOSE],
-        "nome": ["JOAO SILVA", "MARIA SOUZA", "CARLOS OLIVEIRA"],
-        "cargo": ["ANALISTA", "ASSESSOR", "TECNICO"],
-        "classe": ["A", "B", "C"],
-        "org_lotacao": ["MINISTERIO DA SAUDE", "MINISTERIO DA EDUCACAO", "PREFEITURA GOIANIA"],
-        "org_exercicio": ["MINISTERIO DA SAUDE", "MINISTERIO DA EDUCACAO", "PREFEITURA GOIANIA"],
-        "uorg_lotacao": ["U1", "U2", "U3"],
-        "uorg_exercicio": ["U1", "U2", "U3"],
-        "situacao_vinculo": ["ATIVO", "ATIVO", "ATIVO"],
-        "regime_juridico": ["ESTATUTARIO"] * 3,
-        "tipo_vinculo": ["EFETIVO", "COMISSIONADO", "TEMPORARIO"],
-        "jornada_trabalho": ["40h"] * 3,
-        "data_ingresso_orgao": ["2015-03-10", "2019-07-22", "2021-01-05"],
-        "data_ingresso_servico": ["2015-03-10", "2019-07-22", "2021-01-05"],
-        "uf_exercicio": [UF_DF, UF_DF, "GO"],
-        "municipio_exercicio": ["BRASILIA", "BRASILIA", "GOIANIA"],
-        "cd_uasg": ["1001", "1002", "1003"],
-        "fonte_categoria": ["CGU"] * 3,
-        "fonte_nome": ["CGU"] * 3,
-        "fonte_url": ["https://portaldatransparencia.gov.br"] * 3
-    })
+    cadastro_data = []
+    remuneracao_data = []
+    base_servidores = [
+        {'cpf': CPF_JOAO, 'nome': 'JOAO SILVA', 'cargo': 'ANALISTA', 'org': 'MINISTERIO DA SAUDE', 'uf': UF_DF},
+        {'cpf': CPF_MARIA, 'nome': 'MARIA SOUZA', 'cargo': 'ASSESSOR', 'org': 'MINISTERIO DA EDUCACAO', 'uf': UF_DF},
+        {'cpf': CPF_JOSE, 'nome': 'CARLOS OLIVEIRA', 'cargo': 'TECNICO', 'org': 'PREFEITURA GOIANIA', 'uf': 'GO'},
+    ]
+    for i in range(MULT):
+        for srv in base_servidores:
+            cpf_varied = vary_cpf(srv['cpf']) if i > 0 else srv['cpf']
+            nome_varied = vary_name(srv['nome']) if i > 0 else srv['nome']
+            cadastro_data.append({
+                "id_servidor": str(i*len(base_servidores) + base_servidores.index(srv) + 1),
+                "cpf": cpf_varied,
+                "nome": nome_varied,
+                "cargo": srv['cargo'],
+                "classe": random.choice(['A', 'B', 'C']),
+                "org_lotacao": srv['org'],
+                "org_exercicio": srv['org'],
+                "uorg_lotacao": f"U{base_servidores.index(srv)+1}",
+                "uorg_exercicio": f"U{base_servidores.index(srv)+1}",
+                "situacao_vinculo": "ATIVO",
+                "regime_juridico": "ESTATUTARIO",
+                "tipo_vinculo": random.choice(["EFETIVO", "COMISSIONADO", "TEMPORARIO"]),
+                "jornada_trabalho": "40h",
+                "data_ingresso_orgao": "2015-03-10",
+                "data_ingresso_servico": "2015-03-10",
+                "uf_exercicio": srv['uf'],
+                "municipio_exercicio": "BRASILIA" if srv['uf'] == UF_DF else "GOIANIA",
+                "cd_uasg": f"10{base_servidores.index(srv)+1:02d}",
+                "fonte_categoria": "CGU",
+                "fonte_nome": "CGU",
+                "fonte_url": "https://portaldatransparencia.gov.br"
+            })
+            remuneracao_data.append({
+                "id_servidor": str(i*len(base_servidores) + base_servidores.index(srv) + 1),
+                "ano": "2024",
+                "mes": "01",
+                "fonte_categoria": "CGU",
+                "remuneracao_bruta": str(random.randint(5000, 20000)),
+                "remuneracao_liquida": str(random.randint(4000, 15000)),
+                "total_bruto": str(random.randint(5000, 20000)),
+                "irrf": str(random.randint(200, 2000)),
+                "pss_rpps": str(random.randint(100, 1000)),
+                "abate_teto": "0",
+                "gratificacao_natalina": "0",
+                "ferias": "0",
+                "verbas_indenizatorias": "0",
+                "outras_verbas": "0"
+            })
 
-    cadastro.to_csv(os.path.join(cgu_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
-
-    remuneracao = pd.DataFrame({
-        "id_servidor": ["1", "2", "3"],
-        "ano": ["2024", "2024", "2024"],
-        "mes": ["01", "01", "01"],
-        "fonte_categoria": ["CGU"] * 3,
-        "remuneracao_bruta": ["12000", "8000", "5000"],
-        "remuneracao_liquida": ["9500", "6500", "4200"],
-        "total_bruto": ["12000", "8000", "5000"],
-        "irrf": ["1000", "700", "300"],
-        "pss_rpps": ["500", "400", "200"],
-        "abate_teto": ["0", "0", "0"],
-        "gratificacao_natalina": ["0", "0", "0"],
-        "ferias": ["0", "0", "0"],
-        "verbas_indenizatorias": ["0", "0", "0"],
-        "outras_verbas": ["0", "0", "0"]
-    })
-
-    remuneracao.to_csv(os.path.join(cgu_dir, "remuneracao.csv"), index=False, sep=',', encoding='utf-8-sig')
+    pd.DataFrame(cadastro_data).to_csv(os.path.join(cgu_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
+    pd.DataFrame(remuneracao_data).to_csv(os.path.join(cgu_dir, "remuneracao.csv"), index=False, sep=',', encoding='utf-8-sig')
 
 def generate_sancoes_cgu_data():
     print("Gerando dados de sanções CGU (compatível com pipeline)...")
@@ -453,20 +536,31 @@ def generate_camara_data():
     camara_dir = os.path.join(DATA_DIR, "camara")
     os.makedirs(camara_dir, exist_ok=True)
 
-    df = pd.DataFrame({
-        'despesa_id': ['D001', 'D002', 'D003'],  # CRÍTICO
-        'ano': ['2024', '2024', '2024'],
-        'mes': ['1', '2', '3'],
-        'nome_parlamentar': ['DEP. POLITICO INFLUENTE', 'DEP. MARIA SOUZA', 'DEP. POLITICO INFLUENTE'],
-        'partido': ['PTST', 'XYZ', 'PTST'],
-        'uf': [UF_DF, UF_DF, UF_DF],
-        'nome_fornecedor': ['EMPRESA FACHADA LTDA', 'HOTEL BRASILIA LTDA', 'GRAFICA CENTRAL'],
-        'cnpj_fornecedor': [CNPJ_FACHADA, CNPJ_HOTEL, CNPJ_GRAFICA],
-        'tipo_despesa': ['COMBUSTIVEL', 'HOSPEDAGEM', 'DIVULGACAO'],
-        'valor_liquido': ['800.00', '1500.00', '600.00'],
-        'data_emissao': ['2024-01-12', '2024-02-18', '2024-03-22'],
-        'fonte_nome': ['Câmara dos Deputados'] * 3
-    })
+    despesas_data = []
+    base_despesas = [
+        {'parlamentar': 'DEP. POLITICO INFLUENTE', 'fornecedor': 'EMPRESA FACHADA LTDA', 'cnpj': CNPJ_FACHADA, 'tipo': 'COMBUSTIVEL'},
+        {'parlamentar': 'DEP. MARIA SOUZA', 'fornecedor': 'HOTEL BRASILIA LTDA', 'cnpj': CNPJ_HOTEL, 'tipo': 'HOSPEDAGEM'},
+        {'parlamentar': 'DEP. POLITICO INFLUENTE', 'fornecedor': 'GRAFICA CENTRAL', 'cnpj': CNPJ_GRAFICA, 'tipo': 'DIVULGACAO'},
+    ]
+    for i in range(MULT):
+        for desp in base_despesas:
+            cnpj_varied = vary_cnpj(desp['cnpj']) if i > 0 else desp['cnpj']
+            nome_varied = vary_name(desp['fornecedor']) if i > 0 else desp['fornecedor']
+            despesas_data.append({
+                'despesa_id': f'D{i*len(base_despesas)+base_despesas.index(desp)+1:03d}',
+                'ano': '2024',
+                'mes': str((i % 12) + 1),
+                'nome_parlamentar': desp['parlamentar'],
+                'partido': 'PTST' if 'POLITICO' in desp['parlamentar'] else 'XYZ',
+                'uf': UF_DF,
+                'nome_fornecedor': nome_varied,
+                'cnpj_fornecedor': cnpj_varied,
+                'tipo_despesa': desp['tipo'],
+                'valor_liquido': f'{random.randint(500, 5000)}.00',
+                'data_emissao': f'2024-{(i % 12)+1:02d}-{random.randint(1,28):02d}',
+                'fonte_nome': 'Câmara dos Deputados'
+            })
+    df = pd.DataFrame(despesas_data)
 
     df.to_csv(
         os.path.join(camara_dir, "despesas_2024.csv"),
@@ -480,36 +574,47 @@ def generate_bndes_data():
     bndes_dir = os.path.join(DATA_DIR, "bndes")
     os.makedirs(bndes_dir, exist_ok=True)
 
-    df = pd.DataFrame({
-        '_id': ['EMP001', 'EMP002', 'EMP003'],  # CRÍTICO
-        'cnpj': [CNPJ_FACHADA, CNPJ_AMIGA, CNPJ_SUSPEITOS],
-        'cliente': ['EMPRESA FACHADA LTDA', 'CONSTRUTORA AMIGA SA', 'SUPRIMENTOS SUSPEITOS ME'],
-        'descricao_do_projeto': ['EXPANSAO', 'MODERNIZACAO', 'ENERGIA SOLAR'],
-        'uf': ['SP', 'RJ', 'MG'],
-        'municipio': ['SAO PAULO', 'RIO DE JANEIRO', 'BELO HORIZONTE'],
-        'numero_do_contrato': ['CTR001', 'CTR002', 'CTR003'],
-        'data_da_contratacao': ['2021-04-10', '2022-07-15', '2023-01-20'],
-        'valor_contratado_reais': ['5000000.00', '2000000.00', '7500000.00'],
-        'valor_desembolsado_reais': ['3000000.00', '1500000.00', '5000000.00'],
-        'fonte_de_recurso': ['TESOURO', 'TESOURO', 'FAT'],
-        'custo_financeiro': ['5.0', '4.5', '6.0'],
-        'juros': ['1.2', '1.1', '1.5'],
-        'prazo_carencia_meses': ['12', '6', '18'],
-        'prazo_amortizacao_meses': ['60', '48', '72'],
-        'modalidade_de_apoio': ['DIRETO', 'INDIRETO', 'DIRETO'],
-        'forma_de_apoio': ['FINANCIAMENTO', 'FINANCIAMENTO', 'FINANCIAMENTO'],
-        'produto': ['FINEM', 'BNDES AUTOMATICO', 'FINAME'],
-        'instrumento_financeiro': ['EMPRESTIMO', 'EMPRESTIMO', 'EMPRESTIMO'],
-        'inovacao': ['NAO', 'SIM', 'NAO'],
-        'area_operacional': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
-        'setor_cnae': ['1234', '5678', '9101'],
-        'subsetor_cnae_nome': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
-        'setor_bndes': ['INDUSTRIA', 'SERVICOS', 'ENERGIA'],
-        'porte_do_cliente': ['GRANDE', 'MEDIO', 'GRANDE'],
-        'natureza_do_cliente': ['PRIVADA', 'PRIVADA', 'PRIVADA'],
-        'situacao_do_contrato': ['ATIVA', 'ATIVA', 'ENCERRADA'],
-        'fonte_nome': ['BNDES'] * 3
-    })
+    bndes_data = []
+    base_bndes = [
+        {'cnpj': CNPJ_FACHADA, 'cliente': 'EMPRESA FACHADA LTDA'},
+        {'cnpj': CNPJ_AMIGA, 'cliente': 'CONSTRUTORA AMIGA SA'},
+        {'cnpj': CNPJ_SUSPEITOS, 'cliente': 'SUPRIMENTOS SUSPEITOS ME'},
+    ]
+    for i in range(MULT):
+        for bnd in base_bndes:
+            cnpj_varied = vary_cnpj(bnd['cnpj']) if i > 0 else bnd['cnpj']
+            cliente_varied = vary_name(bnd['cliente']) if i > 0 else bnd['cliente']
+            bndes_data.append({
+                '_id': f'EMP{i*len(base_bndes)+base_bndes.index(bnd)+1:03d}',
+                'cnpj': cnpj_varied,
+                'cliente': cliente_varied,
+                'descricao_do_projeto': random.choice(['EXPANSAO', 'MODERNIZACAO', 'ENERGIA SOLAR', 'PESQUISA']),
+                'uf': random.choice(['SP', 'RJ', 'MG', 'DF']),
+                'municipio': 'SAO PAULO',
+                'numero_do_contrato': f'CTR{i+1:03d}',
+                'data_da_contratacao': f'202{random.randint(1,4)}-04-10',
+                'valor_contratado_reais': f'{random.randint(1000000, 10000000)}.00',
+                'valor_desembolsado_reais': f'{random.randint(500000, 5000000)}.00',
+                'fonte_de_recurso': random.choice(['TESOURO', 'FAT']),
+                'custo_financeiro': str(random.uniform(4.0, 7.0))[:3],
+                'juros': str(random.uniform(1.0, 2.0))[:3],
+                'prazo_carencia_meses': str(random.randint(6, 24)),
+                'prazo_amortizacao_meses': str(random.randint(36, 120)),
+                'modalidade_de_apoio': random.choice(['DIRETO', 'INDIRETO']),
+                'forma_de_apoio': 'FINANCIAMENTO',
+                'produto': random.choice(['FINEM', 'BNDES AUTOMATICO', 'FINAME']),
+                'instrumento_financeiro': 'EMPRESTIMO',
+                'inovacao': random.choice(['NAO', 'SIM']),
+                'area_operacional': random.choice(['INDUSTRIA', 'SERVICOS', 'ENERGIA']),
+                'setor_cnae': str(random.randint(1000, 9999)),
+                'subsetor_cnae_nome': random.choice(['INDUSTRIA', 'SERVICOS', 'ENERGIA']),
+                'setor_bndes': random.choice(['INDUSTRIA', 'SERVICOS', 'ENERGIA']),
+                'porte_do_cliente': random.choice(['GRANDE', 'MEDIO', 'PEQUENO']),
+                'natureza_do_cliente': 'PRIVADA',
+                'situacao_do_contrato': random.choice(['ATIVA', 'ENCERRADA']),
+                'fonte_nome': 'BNDES'
+            })
+    df = pd.DataFrame(bndes_data)
 
     df.to_csv(
         os.path.join(bndes_dir, "operacoes_2024.csv"),
@@ -543,50 +648,32 @@ def generate_senado_data():
 
     ano = 2024
 
-    data = [
-        {
-            "ano": 2024,
-            "mes": 1,
-            "cpf_senador": CPF_POLITICO,
-            "nome_senador": "SEN. POLITICO INFLUENTE",
-            "partido": "PTST",
-            "uf": UF_DF,
-            "fornecedor": "AUTO POSTO BRASIL LTDA",
-            "cnpj_fornecedor": CNPJ_XYZ,
-            "tipo_despesa": "COMBUSTIVEL",
-            "descricao": "Abastecimento de veículo oficial",
-            "valor": 900.00,
-            "data_emissao": "2024-01-15"
-        },
-        {
-            "ano": 2024,
-            "mes": 2,
-            "cpf_senador": CPF_JOAO,
-            "nome_senador": "SEN. JOAO SILVA",
-            "partido": "ABC",
-            "uf": UF_DF,
-            "fornecedor": "HOTEL CENTRAL LTDA",
-            "cnpj_fornecedor": CNPJ_HOTEL,
-            "tipo_despesa": "HOSPEDAGEM",
-            "descricao": "Hospedagem em viagem oficial",
-            "valor": 1800.00,
-            "data_emissao": "2024-02-20"
-        },
-        {
-            "ano": 2024,
-            "mes": 3,
-            "cpf_senador": CPF_POLITICO,
-            "nome_senador": "SEN. POLITICO INFLUENTE",
-            "partido": "PTST",
-            "uf": UF_DF,
-            "fornecedor": "AGENCIA PUBLICIDADE",
-            "cnpj_fornecedor": CNPJ_GRAFICA,
-            "tipo_despesa": "DIVULGACAO",
-            "descricao": "Serviços de publicidade",
-            "valor": 700.00,
-            "data_emissao": "2024-03-25"
-        }
+    data = []
+    base_senado = [
+        {"cpf": CPF_POLITICO, "nome": "SEN. POLITICO INFLUENTE", "partido": "PTST", "fornecedor": "AUTO POSTO BRASIL LTDA", "cnpj": CNPJ_XYZ, "tipo": "COMBUSTIVEL"},
+        {"cpf": CPF_JOAO, "nome": "SEN. JOAO SILVA", "partido": "ABC", "fornecedor": "HOTEL CENTRAL LTDA", "cnpj": CNPJ_HOTEL, "tipo": "HOSPEDAGEM"},
+        {"cpf": CPF_POLITICO, "nome": "SEN. POLITICO INFLUENTE", "partido": "PTST", "fornecedor": "AGENCIA PUBLICIDADE", "cnpj": CNPJ_GRAFICA, "tipo": "DIVULGACAO"},
     ]
+    for i in range(MULT):
+        for sen in base_senado:
+            cpf_varied = vary_cpf(sen["cpf"]) if i > 0 else sen["cpf"]
+            nome_varied = vary_name(sen["nome"]) if i > 0 else sen["nome"]
+            forn_varied = vary_name(sen["fornecedor"]) if i > 0 else sen["fornecedor"]
+            cnpj_varied = vary_cnpj(sen["cnpj"]) if i > 0 else sen["cnpj"]
+            data.append({
+                "ano": 2024,
+                "mes": (i % 12) + 1,
+                "cpf_senador": cpf_varied,
+                "nome_senador": nome_varied,
+                "partido": sen["partido"],
+                "uf": UF_DF,
+                "fornecedor": forn_varied,
+                "cnpj_fornecedor": cnpj_varied,
+                "tipo_despesa": sen["tipo"],
+                "descricao": "Despesa oficial",
+                "valor": float(random.randint(500, 5000)),
+                "data_emissao": f"2024-{(i % 12)+1:02d}-{random.randint(1,28):02d}"
+            })
 
     wrapped = {
         "metadata": {
