@@ -301,7 +301,9 @@ def generate_sancoes_data(empresas):
         if e["cenario"] == 0:
             rows.append({
                 "cpf_cnpj": e["cnpj"],
-                "tipo_sancao": "Inidoneidade"
+                "tipo_sancao": "Inidoneidade",
+                "data_inicio": "2020-01-01",
+                "data_fim": ""
             })
 
     pd.DataFrame(rows).to_csv(os.path.join(dir_, "ceis.csv"), index=False)
