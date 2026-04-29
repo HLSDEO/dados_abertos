@@ -568,9 +568,9 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
     with IngestionRun(driver, "tse") as run_ctx:
-        cand_dir = DATA_DIR / "candidatos"
-        doac_dir = DATA_DIR / "doacoes"
-        bens_dir = DATA_DIR / "bens"
+        cand_dir = DATA_DIR
+        doac_dir = DATA_DIR
+        bens_dir = DATA_DIR
 
         log.info("  [1/3] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
         stats = {'total': 0}
