@@ -242,21 +242,20 @@ PATTERNS: list[dict] = [
         "name_pt": "Empresa recebe BNDES e está sancionada",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:RECEBU_EMPRESTIMO]->(e:Emprestimo)
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:RECEBEU_EMPRESTIMO]->(e:Emprestimo)
             MATCH (emp)-[:POSSUI_SANCAO]->(s:Sancao)
-            WHERE s.data_inicio IS NOT NULL
             WITH count(DISTINCT e) AS count,
-                  sum(e.valor_contratado_reais) AS valor_total,
-                  collect(DISTINCT {
-                      tipo:  "Emprestimo",
-                      id:    e.emprestimo_id,
-                      label: e.produto + " — R$ " + toString(e.valor_contratado_reais) + " (" + e.data_da_contratacao + ")"
-                  })[..3] AS ev_emprestimos,
-                  collect(DISTINCT {
-                      tipo:  "Sancao",
-                      id:    s.sancao_id,
-                      label: s.tipo_sancao + " (" + s.data_inicio + "→" + coalesce(s.data_fim,"vigente") + ")"
-                  })[..3] AS ev_sancoes
+                   sum(e.valor_contratado_reais) AS valor_total,
+                   collect(DISTINCT {
+                       tipo:  "Emprestimo",
+                       id:    e.emprestimo_id,
+                       label: e.produto + " — R$ " + toString(e.valor_contratado_reais) + " (" + e.data_da_contratacao + ")"
+                   })[..3] AS ev_emprestimos,
+                   collect(DISTINCT {
+                       tipo:  "Sancao",
+                       id:    s.sancao_id,
+                       label: s.tipo_sancao + " (" + s.data_inicio + "→" + coalesce(s.data_fim,"vigente") + ")"
+                   })[..3] AS ev_sancoes
             WHERE count > 0
             RETURN count, valor_total, ev_emprestimos + ev_sancoes AS evidence
         """,
