@@ -14,11 +14,12 @@ Uso:
   python main.py pipeline cnpj --history                   # todos os snapshots
   python main.py run cnpj --chunk 75000 --workers 4        # download + pipeline
   python main.py run cnpj --full                           # download + pipeline + analytics
-  python main.py analytics                                 # só analytics (tudo)
-  python main.py analytics gds                             # só o GDS
-  python main.py analytics splink                          # deduplicação probabilística
-  python main.py schema                                    # aplica constraints + índices + fulltext
-  python main.py ingestion-status                          # mostra status dos últimos runs
+   python main.py analytics                                 # só analytics (tudo)
+   python main.py analytics gds                             # só o GDS
+   python main.py analytics splink                          # deduplicação probabilística
+   python main.py schema                                    # aplica constraints + índices + fulltext
+   python main.py gerar_teste                               # gera dados sintéticos + roda pipelines
+   python main.py ingestion-status                          # mostra status dos últimos runs
 
 Flags:
   --chunk N     Linhas por chunk na leitura dos ZIPs (default: 50000)
@@ -320,6 +321,19 @@ def main():
         driver.close()
         log.info("=== Schema aplicado ===")
 
+    elif command == "gerar_teste":
+        # Gera dados sintéticos e roda pipelines
+        log.info("=== GERANDO DADOS SINTÉTICOS ===")
+        import subprocess
+        result = subprocess.run([sys.executable, "gerar_teste.py"], cwd=ETL_DIR, capture_output=True, text=True)
+        if result.returncode != 0:
+            log.error(f"Erro ao gerar dados: {result.stderr}")
+            sys.exit(1)
+        log.info("Dados gerados com sucesso.")
+        log.info("=== RODANDO PIPELINES ===")
+        names = list(PIPELINES)  # todos os pipelines
+        do_pipeline(names, opts)
+
     elif command == "ingestion-status":
         # Mostra status das últimas execuções de cada pipeline
         from pipeline.lib import wait_for_neo4j
@@ -351,7 +365,7 @@ def main():
     else:
         log.error(
             f"Comando inválido: '{command}'. "
-            "Use: download | pipeline | analytics | run | schema | ingestion-status"
+            "Use: download | pipeline | analytics | run | schema | gerar_teste | ingestion-status"
         )
         sys.exit(1)
 

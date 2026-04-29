@@ -76,6 +76,11 @@ copy .env.prod .env
 
 ### 2. ETL
 
+#### Dados de teste (gerar + pipeline)
+```bash
+docker compose run --rm etl gerar_teste
+```
+
 #### Completo (download + pipeline)
 ```bash
 docker compose run --rm etl
