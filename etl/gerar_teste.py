@@ -214,12 +214,8 @@ def generate_cnpj_data():
 def generate_tse_data():
     print("Gerando dados do TSE...")
     tse_dir = os.path.join(DATA_DIR, "tse")
-    candidatos_dir = os.path.join(tse_dir, "candidatos")
-    doacoes_dir = os.path.join(tse_dir, "doacoes")
-    ano_dir_cand = os.path.join(candidatos_dir, "2022")
-    ano_dir_doac = os.path.join(doacoes_dir, "2022")
-    os.makedirs(ano_dir_cand, exist_ok=True)
-    os.makedirs(ano_dir_doac, exist_ok=True)
+    ano_dir = os.path.join(tse_dir, "2022")
+    os.makedirs(ano_dir, exist_ok=True)
 
     candidatos_data = []
     doacoes_data = []
@@ -260,8 +256,8 @@ def generate_tse_data():
                 'VR_RECEITA': f'{random.randint(1000, 100000)},00', 'DT_RECEITA': '01/10/2022', 'DS_RECEITA': 'DOACAO'
             })
 
-    pd.DataFrame(candidatos_data).to_csv(os.path.join(ano_dir_cand, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8')
-    pd.DataFrame(doacoes_data).to_csv(os.path.join(ano_dir_doac, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(candidatos_data).to_csv(os.path.join(ano_dir, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8')
+    pd.DataFrame(doacoes_data).to_csv(os.path.join(ano_dir, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8')
 
 def generate_cgu_data():
     print("Gerando dados da CGU...")
