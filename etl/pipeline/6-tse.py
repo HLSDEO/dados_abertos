@@ -365,7 +365,7 @@ def _build_sq_cpf_map(cand_dir: Path,
     Muito mais rápido que resolver via Neo4j depois da carga.
     """
     sq_cpf: dict[str, str] = {}
-    todos = sorted(cand_dir.glob("candidatos_*.csv"), key=lambda p: p.stem)
+    todos = sorted(cand_dir.glob("**/candidatos_*.csv"), key=lambda p: p.stem)
     if eleicoes:
         todos = [p for p in todos
                  if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
@@ -387,7 +387,7 @@ def _load_candidatos(driver, data_dir: Path,
                      eleicoes: list[int] | None = None,
                      limite: int | None = None,
                      stats: dict = None) -> None:
-    todos = sorted(data_dir.glob("candidatos_*.csv"), key=lambda p: p.stem)
+    todos = sorted(data_dir.glob("**/candidatos_*.csv"), key=lambda p: p.stem)
     if eleicoes:
         todos = [p for p in todos if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano)) for ano in eleicoes)]
     if not todos:
@@ -438,7 +438,7 @@ def _load_doacoes(driver, data_dir: Path,
                   eleicoes: list[int] | None = None,
                   limite: int | None = None,
                   stats: dict = None) -> None:
-    todos = sorted(data_dir.glob("doacoes_*.csv"))
+    todos = sorted(data_dir.glob("**/doacoes_*.csv"))
     if eleicoes:
         todos = [p for p in todos
                  if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
@@ -511,7 +511,7 @@ def _load_bens(driver, data_dir: Path,
                eleicoes: list[int] | None = None,
                limite: int | None = None,
                stats: dict = None) -> None:
-    todos = sorted(data_dir.glob("bens_*.csv"))
+    todos = sorted(data_dir.glob("**/bens_*.csv"))
     if eleicoes:
         todos = [p for p in todos
                  if any(f'_{ano}' in p.stem or p.stem.endswith(str(ano))
@@ -568,10 +568,10 @@ def run(neo4j_uri: str, neo4j_user: str, neo4j_password: str,
         apply_schema(session, Q_CONSTRAINTS, Q_INDEXES)
 
     with IngestionRun(driver, "tse") as run_ctx:
-        cand_dir = DATA_DIR
-        doac_dir = DATA_DIR
-        bens_dir = DATA_DIR
-
+        cand_dir = DATA_DIR / "candidatos"
+        doac_dir = DATA_DIR / "doacoes"
+        bens_dir = DATA_DIR / "bens"
+        
         log.info("  [1/3] Candidatos → Pessoa, Eleição, Partido, FILIADA_A, CANDIDATO_EM...")
         stats = {'total': 0}
         _load_candidatos(driver, cand_dir, eleicoes, limite, stats)
