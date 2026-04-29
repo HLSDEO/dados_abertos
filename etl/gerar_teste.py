@@ -213,8 +213,12 @@ def generate_cnpj_data():
 
 def generate_tse_data():
     print("Gerando dados do TSE...")
-    tse_dir = os.path.join(DATA_DIR, "tse")
-    os.makedirs(tse_dir, exist_ok=True)
+    candidatos_dir = os.path.join(DATA_DIR, "candidatos")
+    doacoes_dir = os.path.join(DATA_DIR, "doacoes")
+    ano_dir_cand = os.path.join(candidatos_dir, "2022")
+    ano_dir_doac = os.path.join(doacoes_dir, "2022")
+    os.makedirs(ano_dir_cand, exist_ok=True)
+    os.makedirs(ano_dir_doac, exist_ok=True)
 
     candidatos_data = []
     doacoes_data = []
@@ -254,8 +258,8 @@ def generate_tse_data():
                 'VR_RECEITA': f'{random.randint(1000, 100000)},00', 'DT_RECEITA': '01/10/2022', 'DS_RECEITA': 'DOACAO'
             })
 
-    pd.DataFrame(candidatos_data).to_csv(os.path.join(tse_dir, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
-    pd.DataFrame(doacoes_data).to_csv(os.path.join(tse_dir, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(candidatos_data).to_csv(os.path.join(ano_dir_cand, "candidatos_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(doacoes_data).to_csv(os.path.join(ano_dir_doac, "doacoes_2022.csv"), index=False, sep=';', encoding='utf-8-sig')
 
 def generate_cgu_data():
     print("Gerando dados da CGU...")
@@ -296,8 +300,8 @@ def generate_cgu_data():
         'cpf_cnpj': [CNPJ_SUSPEITOS],
         'nome': ['SUPRIMENTOS SUSPEITOS ME'],
         'tipo_sancao': ['Inidoneidade'],
-        'data_inicio': ['01/01/2023'],
-        'data_fim': ['01/01/2025'],
+        'data_inicio': ['2023-01-01'],
+        'data_fim': ['2025-01-01'],
         'orgao_sancionador': ['PREFEITURA DE TESTE'],
         'uf_orgao': [UF_DF],
         'esfera_governo': ['MUNICIPAL'],
@@ -456,11 +460,11 @@ def generate_sancoes_cgu_data():
 
     # CEIS
     ceis = pd.DataFrame({
-        'cpf_cnpj': ['11111111111', '12345678000199'],
-        'nome': ['JOAO SILVA', 'EMPRESA XYZ LTDA'],
+        'cpf_cnpj': [CPF_JOAO, CNPJ_SUSPEITOS],
+        'nome': ['JOAO SILVA', 'SUPRIMENTOS SUSPEITOS ME'],
         'tipo_sancao': ['DEMITIDO', 'INIDONEIDADE'],
-        'data_inicio': ['2022-05-10', '2023-08-15'],
-        'data_fim': ['2027-05-10', '2025-08-15'],
+        'data_inicio': ['2022-05-10', '2023-01-01'],
+        'data_fim': ['2027-05-10', '2025-01-01'],
         'orgao_sancionador': ['CGU', 'MINISTERIO DA SAUDE'],
         'uf_orgao': ['DF', 'DF'],
         'esfera_governo': ['FEDERAL', 'FEDERAL'],
