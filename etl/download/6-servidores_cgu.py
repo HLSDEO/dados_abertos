@@ -15,10 +15,10 @@ Extrai e salva CSVs normalizados em:
 Arquivos já existentes são pulados (idempotente).
 
 Uso:
-  python main.py download servidores                          # mês atual
-  python main.py download servidores --ano 2025               # todos os meses de 2025
-  python main.py download servidores --ano 2025 --mes 1       # jan/2025
-  python main.py download servidores --ano 2025 --mes 1 --mes 6  # jan e jun/2025
+  python main.py download servidores_cgu                          # mês atual
+  python main.py download servidores_cgu --ano 2025               # todos os meses de 2025
+  python main.py download servidores_cgu --ano 2025 --mes 1       # jan/2025
+  python main.py download servidores_cgu --ano 2025 --mes 1 --mes 6  # jan e jun/2025
 """
 
 import csv
