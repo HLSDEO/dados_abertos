@@ -219,8 +219,8 @@ CALL gds.betweenness.write($graph_name, {
   writeProperty: 'gds_betweenness',
   samplingSize:  $sampling_size
 })
-YIELD nodePropertiesWritten, minimumScore, maximumScore, scoreSum
-RETURN nodePropertiesWritten, minimumScore, maximumScore, scoreSum
+YIELD nodePropertiesWritten
+RETURN nodePropertiesWritten
 """
 
 # NodeSimilarity só sobre Empresa — compara vizinhança de sócios/localização
