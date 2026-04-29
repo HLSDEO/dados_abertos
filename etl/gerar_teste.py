@@ -200,7 +200,7 @@ def generate_servidores_data():
         'id_servidor': 'S1', 'cpf': CPF_MARIA, 'nome': 'MARIA SERVIDORA',
         'cargo': 'ANALISTA', 'org_exercicio': 'MINISTERIO DA SAUDE', 'uf_exercicio': 'DF'
     }]
-    pd.DataFrame(cad).to_csv(os.path.join(serv_dir, "cadastro.csv"), index=False, sep=';', encoding='utf-8-sig')
+    pd.DataFrame(cad).to_csv(os.path.join(serv_dir, "cadastro.csv"), index=False, sep=',', encoding='utf-8-sig')
 
 if __name__ == "__main__":
     # Limpar e recriar
