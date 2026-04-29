@@ -162,7 +162,7 @@ def _t_sancoes(chunk: list[dict], tipo_registro: str) -> dict:
             "tipo_sancao":     r.get("tipo_sancao", "").strip(),
             "tipo_registro":   tipo_registro,
             "data_inicio":     inicio,
-            "data_fim":        r.get("data_fim", "").strip(),
+            "data_fim":        r.get("data_fim", "").strip() or None,
             "fundamentacao":   r.get("fundamentacao", "").strip(),
             "numero_processo": r.get("numero_processo", "").strip(),
             "valor_multa":     r.get("valor_multa", "").strip(),

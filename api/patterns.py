@@ -21,23 +21,23 @@ PATTERNS: list[dict] = [
         "risk_level": "high",
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:POSSUI_SANCAO]->(s:Sancao)
-            MATCH (emp)-[:FIRMOU_CONTRATO]->(c:Contrato)
+            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
             WHERE s.data_inicio IS NOT NULL
               AND c.data_assinatura IS NOT NULL
               AND c.data_assinatura >= s.data_inicio
               AND (s.data_fim IS NULL OR c.data_assinatura <= s.data_fim)
             WITH count(DISTINCT c) AS count,
-                 sum(c.valor_global)  AS valor_total,
-                 collect(DISTINCT {
-                     tipo:  "Sancao",
-                     id:    s.sancao_id,
-                     label: s.tipo_sancao + " (" + s.data_inicio + "→" + coalesce(s.data_fim,"vigente") + ")"
-                 })[..5] AS ev_sancoes,
-                 collect(DISTINCT {
-                     tipo:  "Contrato",
-                     id:    c.contrato_id,
-                     label: c.nome_orgao + " — R$ " + toString(c.valor_global) + " (" + c.data_assinatura + ")"
-                 })[..5] AS ev_contratos
+                  sum(c.valor_global)  AS valor_total,
+                  collect(DISTINCT {
+                      tipo:  "Sancao",
+                      id:    s.sancao_id,
+                      label: s.tipo_sancao + " (" + s.data_inicio + "→" + coalesce(s.data_fim,"vigente") + ")"
+                  })[..5] AS ev_sancoes,
+                  collect(DISTINCT {
+                      tipo:  "ContratoComprasNet",
+                      id:    c.contrato_id,
+                      label: c.nome_orgao + " — R$ " + toString(c.valor_global) + " (" + c.data_assinatura + ")"
+                  })[..5] AS ev_contratos
             RETURN count, valor_total, ev_sancoes + ev_contratos AS evidence
         """,
     },
@@ -97,23 +97,23 @@ PATTERNS: list[dict] = [
         "name_pt": "Concentração de contratos em único órgão (≥ 60%)",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:FIRMOU_CONTRATO]->(c:Contrato)
-            WHERE c.cnpj_orgao IS NOT NULL AND c.valor_global > 0
-            WITH c.cnpj_orgao AS orgao, c.nome_orgao AS nome_orgao,
-                 count(c) AS cnt, sum(c.valor_global) AS valor
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            WHERE c.orgao_codigo IS NOT NULL AND c.valor_global > 0
+            WITH c.orgao_codigo AS orgao, c.orgao_nome AS nome_orgao,
+                  count(c) AS cnt, sum(c.valor_global) AS valor
             WITH collect({orgao: nome_orgao, cnt: cnt, valor: valor}) AS por_orgao,
-                 sum(valor) AS total
+                  sum(valor) AS total
             WHERE total > 0
             UNWIND por_orgao AS o
             WITH o, total, toFloat(o.valor) / total AS share
             WHERE share >= 0.6
             RETURN count(o)     AS count,
-                   sum(o.valor) AS valor_total,
-                   collect({
-                       tipo:  "Contrato",
-                       id:    o.orgao,
-                       label: o.orgao + " — " + toString(round(share * 100)) + "% dos contratos (R$ " + toString(o.valor) + ")"
-                   }) AS evidence
+                    sum(o.valor) AS valor_total,
+                    collect({
+                        tipo:  "ContratoComprasNet",
+                        id:    o.orgao,
+                        label: o.orgao + " — " + toString(round(share * 100)) + "% dos contratos (R$ " + toString(o.valor) + ")"
+                    }) AS evidence
         """,
     },
 
@@ -122,21 +122,21 @@ PATTERNS: list[dict] = [
         "name_pt": "Possível fracionamento de contratos (múltiplos abaixo do limite de dispensa)",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:FIRMOU_CONTRATO]->(c:Contrato)
-            WHERE c.cnpj_orgao IS NOT NULL
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            WHERE c.orgao_codigo IS NOT NULL
               AND c.valor_global IS NOT NULL
               AND c.valor_global > 0
               AND c.valor_global < 80000
-            WITH c.cnpj_orgao AS orgao, c.nome_orgao AS nome_orgao,
-                 count(c) AS cnt, sum(c.valor_global) AS total_valor, avg(c.valor_global) AS media
+            WITH c.orgao_codigo AS orgao, c.orgao_nome AS nome_orgao,
+                  count(c) AS cnt, sum(c.valor_global) AS total_valor, avg(c.valor_global) AS media
             WHERE cnt >= 5
             RETURN count(orgao) AS count,
-                   sum(total_valor) AS valor_total,
-                   collect({
-                       tipo:  "Contrato",
-                       id:    orgao,
-                       label: nome_orgao + " — " + toString(cnt) + " contratos (média R$ " + toString(round(media)) + ")"
-                   })[..5] AS evidence
+                    sum(total_valor) AS valor_total,
+                    collect({
+                        tipo:  "ContratoComprasNet",
+                        id:    orgao,
+                        label: nome_orgao + " — " + toString(cnt) + " contratos (média R$ " + toString(round(media)) + ")"
+                    })[..5] AS evidence
         """,
     },
 
@@ -165,18 +165,18 @@ PATTERNS: list[dict] = [
         "name_pt": "Servidor público ativo sócio da empresa contratada",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:FIRMOU_CONTRATO]->(:Contrato)
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(:ContratoComprasNet)
             MATCH (p:Pessoa)-[:SOCIO_DE]->(emp)
             WHERE p.cpf IS NOT NULL
             MATCH (srv:Servidor)
             WHERE srv.cpf = p.cpf
               AND toLower(srv.situacao_vinculo) CONTAINS 'ativo'
             WITH count(DISTINCT srv) AS count,
-                 collect(DISTINCT {
-                     tipo:  "Servidor",
-                     id:    srv.id_servidor,
-                     label: srv.nome + " — " + srv.cargo + " / " + srv.org_exercicio
-                 })[..5] AS evidence
+                  collect(DISTINCT {
+                      tipo:  "Servidor",
+                      id:    srv.id_servidor,
+                      label: srv.nome + " — " + srv.cargo + " / " + srv.org_exercicio
+                  })[..5] AS evidence
             WHERE count > 0
             RETURN count, null AS valor_total, evidence
         """,
@@ -189,20 +189,20 @@ PATTERNS: list[dict] = [
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:POSSUI_DIVIDA]->(d:DividaAtiva)
             WHERE d.situacao = 'Ativa' OR d.situacao = 'Aberta'
-            MATCH (emp)-[:FIRMOU_CONTRATO]->(c:Contrato)
+            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
             WHERE c.data_assinatura >= d.data_inscricao
             WITH count(DISTINCT c) AS count,
-                  sum(c.valor_global) AS valor_total,
-                  collect(DISTINCT {
-                      tipo:  "DividaAtiva",
-                      id:    d.divida_id,
-                      label: d.tipo_credito + " (R$ " + toString(d.valor_consolidado) + ")"
-                  })[..3] AS ev_divida,
-                  collect(DISTINCT {
-                      tipo:  "Contrato",
-                      id:    c.contrato_id,
-                      label: c.nome_orgao + " — R$ " + toString(c.valor_global) + " (" + c.data_assinatura + ")"
-                  })[..5] AS ev_contratos
+                   sum(c.valor_global) AS valor_total,
+                   collect(DISTINCT {
+                       tipo:  "DividaAtiva",
+                       id:    d.divida_id,
+                       label: d.tipo_credito + " (R$ " + toString(d.valor_consolidado) + ")"
+                   })[..3] AS ev_divida,
+                   collect(DISTINCT {
+                       tipo:  "ContratoComprasNet",
+                       id:    c.contrato_id,
+                       label: c.orgao_nome + " — R$ " + toString(c.valor_global) + " (" + c.data_assinatura + ")"
+                   })[..5] AS ev_contratos
             WHERE count > 0
             RETURN count, valor_total, ev_divida + ev_contratos AS evidence
         """,
@@ -296,15 +296,15 @@ PATTERNS: list[dict] = [
         "risk_level": "low",
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[d:DOOU_PARA]->(cand:Pessoa)
-            MATCH (emp)-[:FIRMOU_CONTRATO]->(c:Contrato)
+            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
             WHERE c.data_assinatura >= toString(toInteger(d.ano))
             WITH count(DISTINCT cand) AS count,
-                 sum(c.valor_global)  AS valor_total,
-                 collect(DISTINCT {
-                     tipo:  "Pessoa",
-                     id:    cand.cpf,
-                     label: cand.nome + " (doação " + toString(d.ano) + " — R$ " + toString(d.valor) + ")"
-                 })[..5] AS evidence
+                  sum(c.valor_global)  AS valor_total,
+                  collect(DISTINCT {
+                      tipo:  "Pessoa",
+                      id:    cand.cpf,
+                      label: cand.nome + " (doação " + toString(d.ano) + " — R$ " + toString(d.valor) + ")"
+                  })[..5] AS evidence
             WHERE count > 0
             RETURN count, valor_total, evidence
         """,
