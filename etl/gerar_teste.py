@@ -132,7 +132,7 @@ def generate_ibge_data():
 
     # Municípios
     pd.DataFrame([{
-        'id': '5300108', 'nome': 'Brasília', 'microrregiao_id': '53001', **meta
+        'id': '5300108', 'nome': 'Brasília', 'uf': 'DF', 'microrregiao_id': '53001', **meta
     }]).to_csv(os.path.join(ibge_dir, "municipios.csv"), index=False)
 
 # ─────────────────────────────────────────
