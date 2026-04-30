@@ -14,7 +14,7 @@ _LABEL_KEY = {
     "Estado":      "sigla",
     "Partido":     "sigla",
     "Emenda":      "codigo_emenda",
-    "Contrato":    "contrato_id",
+    "ContratoComprasNet": "contrato_id",
     "Sancao":      "id",
     "Eleicao":     "eleicao_id",
     "BemDeclarado": "bem_id",
@@ -40,7 +40,7 @@ def _serialize_node(node) -> dict:
         nome = node.get("ds_eleicao") or ""
     elif label == "BemDeclarado":
         nome = node.get("descricao") or ""
-    elif label == "Contrato":
+    elif label == "ContratoComprasNet":
         nome = node.get("objeto") or ""
     else:
         nome = node.get("nome") or node.get("razao_social")

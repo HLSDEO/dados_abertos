@@ -990,7 +990,7 @@ function mountProfilePage(cytoscape) {
           Pessoa: `/pessoa/${encodeURIComponent(nodeId)}`,
           Empresa: `/empresa/${encodeURIComponent(nodeId)}`,
           Parlamentar: `/parlamentar/${encodeURIComponent(nodeId)}`,
-          Contrato: `/contrato/${encodeURIComponent(nodeId)}`,
+          ContratoComprasNet: `/contrato/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1038,9 +1038,18 @@ function mountProfilePage(cytoscape) {
               ["UF", e.uf || "-"],
               ["Situação", e.situacao_cadastral || "-"],
               ["Sócios PF", payload.socios_pf?.length ?? "-"],
-              ["Contratos", payload.contratos?.length ?? "-"],
               ["Sanções", payload.sancoes?.length ?? "-"],
             ];
+            if (payload.contratos && payload.contratos.length > 0) {
+              payload.contratos.slice(0, 3).forEach(c => {
+                rows.push(["Contrato", c.objeto + " (" + fmtCurrency(c.valor) + ")"]);
+              });
+              if (payload.contratos.length > 3) {
+                rows.push(["", "e mais " + (payload.contratos.length - 3) + " contratos"]);
+              }
+            } else {
+              rows.push(["Contratos", "0"]);
+            }
             actions += `<a class="popup-btn popup-btn-secondary" href="/corrupcao.html?cnpj=${encodeURIComponent(nodeId)}" style="margin-top:4px;">Padrões de risco</a>`;
           } else if (nodeLabel === "Parlamentar") {
             const parl = payload.parlamentar || {};
@@ -1052,7 +1061,7 @@ function mountProfilePage(cytoscape) {
               ["Emendas", payload.emendas?.length ?? "-"],
               ["Doadores", payload.doadores?.length ?? "-"],
             ];
-          } else if (nodeLabel === "Contrato") {
+          } else if (nodeLabel === "ContratoComprasNet") {
             const c = payload.contrato || {};
             titleText = c.objeto || titleText;
             rows = [
@@ -1060,9 +1069,17 @@ function mountProfilePage(cytoscape) {
               ["Ano", c.ano_contrato || "-"],
               ["Valor", fmtCurrency(c.valor_global)],
               ["Assinatura", fmtDate(c.data_assinatura)],
+              ["Vigência", c.data_vigencia_inicio && c.data_vigencia_fim ? `${fmtDate(c.data_vigencia_inicio)} a ${fmtDate(c.data_vigencia_fim)}` : "-"],
               ["Orgão", payload.orgao?.nome || "-"],
               ["Fornecedor", payload.fornecedor?.nome || "-"],
+              ["Tipo Fornecedor", payload.fornecedor?.tipo_pessoa || "-"],
+              ["Situação", c.situacao_contrato || "-"],
             ];
+            if (payload.empenhos && payload.empenhos.length > 0) {
+              rows.push(["Empenhos", payload.empenhos.length]);
+              const totalEmpenhado = payload.empenhos.reduce((sum, e) => sum + (Number(e.valor) || 0), 0);
+              rows.push(["Total Empenhado", fmtCurrency(totalEmpenhado)]);
+            }
           }
 
           body.innerHTML = `
