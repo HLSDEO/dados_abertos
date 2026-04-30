@@ -380,7 +380,7 @@ function mountGraphPage(cytoscape) {
           <button class="button" id="export-pdf-btn" style="background-color: #dc2626; margin-left: 8px;">Exportar PDF</button>
         </div>
       </div>
-    </section>>
+    </section>
     <section id="graph-layout" class="split graph-layout">
       <div class="card">${makeGraphShell()}</div>
       <div class="stack">
@@ -1117,6 +1117,17 @@ function mountProfilePage(cytoscape) {
 
       const graph = await apiFetch(`/graph/expand?label=${encodeURIComponent(tipo)}&id=${encodeURIComponent(id)}&hops=1&max_nodes=100`);
       await renderGraph2D(cytoscape, graph, async (nextLabel, nextId, data, cyEvent) => {
+        // Resolver sanção se for ID interno numérico
+        if (data.nodeLabel === "Sancao" && nextId && /^\d+$/.test(String(nextId))) {
+          try {
+            const s = await apiFetch(`/sancao/${encodeURIComponent(nextId)}`);
+            if (s && s.sancao && s.sancao.sancao_id) {
+              nextId = s.sancao.sancao_id;
+            }
+          } catch (e) {
+            // mantém original se falhar
+          }
+        }
         showNodePopup(nextLabel, nextId, data, cyEvent);
         $("#graph-meta").textContent = `${data.label} selecionado.`;
       });
