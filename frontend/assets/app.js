@@ -1046,17 +1046,8 @@ function mountProfilePage(cytoscape) {
               ["Situação", e.situacao_cadastral || "-"],
               ["Sócios PF", payload.socios_pf?.length ?? "-"],
               ["Sanções", payload.sancoes?.length ?? "-"],
+              ["Contratos", payload.contratos?.length ?? "0"],
             ];
-            if (payload.contratos && payload.contratos.length > 0) {
-              payload.contratos.slice(0, 3).forEach(c => {
-                rows.push(["Contrato", c.objeto + " (" + fmtCurrency(c.valor) + ")"]);
-              });
-              if (payload.contratos.length > 3) {
-                rows.push(["", "e mais " + (payload.contratos.length - 3) + " contratos"]);
-              }
-            } else {
-              rows.push(["Contratos", "0"]);
-            }
             actions += `<a class="popup-btn popup-btn-secondary" href="/corrupcao.html?cnpj=${encodeURIComponent(nodeId)}" style="margin-top:4px;">Padrões de risco</a>`;
           } else if (nodeLabel === "Parlamentar") {
             const parl = payload.parlamentar || {};
