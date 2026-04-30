@@ -992,6 +992,7 @@ function mountProfilePage(cytoscape) {
           Parlamentar: `/parlamentar/${encodeURIComponent(nodeId)}`,
           ContratoComprasNet: `/contrato/${encodeURIComponent(nodeId)}`,
           Sancao: `/sancao/${encodeURIComponent(nodeId)}`,
+          Emprestimo: `/emprestimo/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1091,6 +1092,21 @@ function mountProfilePage(cytoscape) {
               ["Órgão", s.orgao_sancionador || "-"],
               ["Motivo", s.motivo_sancao || "-"],
               ["Publicação", fmtDate(s.data_publicacao)],
+              ["Empresa", payload.empresa?.razao_social || "-"],
+              ["CNPJ", maskCNPJ(payload.empresa?.cnpj)],
+            ];
+          } else if (nodeLabel === "Emprestimo") {
+            const e = payload.emprestimo || {};
+            titleText = e.produto || titleText;
+            rows = [
+              ["Contrato", e.numero_do_contrato || "-"],
+              ["Data", fmtDate(e.data_da_contratacao)],
+              ["Valor contratado", fmtCurrency(e.valor_contratado_reais)],
+              ["Valor desembols.", fmtCurrency(e.valor_desembolsado_reais)],
+              ["Projeto", e.descricao_do_projeto || "-"],
+              ["Setor BNDES", e.setor_bndes || "-"],
+              ["Município/UF", (e.municipio || "") + " / " + (e.uf || "")],
+              ["Situação", e.situacao_do_contrato || "-"],
               ["Empresa", payload.empresa?.razao_social || "-"],
               ["CNPJ", maskCNPJ(payload.empresa?.cnpj)],
             ];
