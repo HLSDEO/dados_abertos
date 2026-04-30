@@ -443,6 +443,10 @@ MATCH (c:ContratoComprasNet {contrato_id: r.contrato_id})
 MATCH (f:Fornecedor {ni_fornecedor: r.ni_fornecedor})
 MERGE (c)-[:CELEBRADO_COM]->(f)
 MERGE (f)-[:DISPUTOU]->(c)
+WITH c, r
+OPTIONAL MATCH (e:Empresa {cnpj_basico: substring(r.ni_fornecedor, 0, 8)})
+WITH c, e WHERE e IS NOT NULL
+MERGE (e)-[:CELEBROU_CONTRATO]->(c)
 """
 
 Q_CONTRATO_ORGAO = """
