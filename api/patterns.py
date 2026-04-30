@@ -21,7 +21,8 @@ PATTERNS: list[dict] = [
         "risk_level": "high",
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:POSSUI_SANCAO]->(s:Sancao)
-            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             WHERE s.data_inicio IS NOT NULL
               AND c.data_assinatura IS NOT NULL
               AND c.data_assinatura >= s.data_inicio
@@ -97,7 +98,9 @@ PATTERNS: list[dict] = [
         "name_pt": "Concentração de contratos em único órgão (≥ 60%)",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             WHERE c.orgao_codigo IS NOT NULL AND c.valor_global > 0
             WITH c.orgao_codigo AS orgao, c.orgao_nome AS nome_orgao,
                   count(c) AS cnt, sum(c.valor_global) AS valor
@@ -122,7 +125,9 @@ PATTERNS: list[dict] = [
         "name_pt": "Possível fracionamento de contratos (múltiplos abaixo do limite de dispensa)",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             WHERE c.orgao_codigo IS NOT NULL
               AND c.valor_global IS NOT NULL
               AND c.valor_global > 0
@@ -165,7 +170,9 @@ PATTERNS: list[dict] = [
         "name_pt": "Servidor público ativo sócio da empresa contratada",
         "risk_level": "medium",
         "cypher": """
-            MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:CELEBRADO_COM]->(:ContratoComprasNet)
+            MATCH (emp:Empresa {cnpj_basico: $cnpj})
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             MATCH (p:Pessoa)-[:SOCIO_DE]->(emp)
             WHERE p.cpf IS NOT NULL
             MATCH (srv:Servidor)
@@ -189,7 +196,8 @@ PATTERNS: list[dict] = [
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[:POSSUI_DIVIDA]->(d:DividaAtiva)
             WHERE d.situacao = 'Ativa' OR d.situacao = 'Aberta'
-            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             WHERE c.data_assinatura >= d.data_inscricao
             WITH count(DISTINCT c) AS count,
                    sum(c.valor_global) AS valor_total,
@@ -296,7 +304,8 @@ PATTERNS: list[dict] = [
         "risk_level": "low",
         "cypher": """
             MATCH (emp:Empresa {cnpj_basico: $cnpj})-[d:DOOU_PARA]->(cand:Pessoa)
-            MATCH (emp)-[:CELEBRADO_COM]->(c:ContratoComprasNet)
+            MATCH (f:Fornecedor) WHERE f.ni_fornecedor STARTS WITH emp.cnpj_basico
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             WHERE c.data_assinatura >= toString(toInteger(d.ano))
             WITH count(DISTINCT cand) AS count,
                   sum(c.valor_global)  AS valor_total,
