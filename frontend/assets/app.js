@@ -993,6 +993,7 @@ function mountProfilePage(cytoscape) {
           ContratoComprasNet: `/contrato/${encodeURIComponent(nodeId)}`,
           Sancao: `/sancao/${encodeURIComponent(nodeId)}`,
           Emprestimo: `/emprestimo/${encodeURIComponent(nodeId)}`,
+          Despesa: `/despesa/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1106,6 +1107,20 @@ function mountProfilePage(cytoscape) {
               ["Empresa", payload.empresa?.razao_social || "-"],
               ["CNPJ", maskCNPJ(payload.empresa?.cnpj)],
             ];
+          } else if (nodeLabel === "Despesa") {
+            const d = payload.despesa || {};
+            titleText = d.tipo_despesa || titleText;
+            rows = [
+              ["Tipo", d.tipo_despesa || "-"],
+              ["Emissão", fmtDate(d.data_emissao)],
+              ["Valor líquido", fmtCurrency(d.valor_liquido)],
+              ["Competência", (d.mes && d.ano) ? `${d.mes}/${d.ano}` : (d.ano || "-")],
+              ["Parlamentar", payload.parlamentar?.nome || "-"],
+              ["Partido/UF", (payload.parlamentar?.partido || "-") + " / " + (payload.parlamentar?.uf || "-")],
+              ["Fornecedor", payload.fornecedor?.razao_social || d.nome_fornecedor || "-"],
+              ["CNPJ Fornecedor", maskCNPJ(payload.fornecedor?.cnpj_basico)],
+              ["Fonte", d.fonte_nome || "-"],
+            ];
           }
 
           body.innerHTML = `
@@ -1217,6 +1232,8 @@ function renderEmpresaSections(payload) {
     ${renderSimpleTable(
       [
         { key: "id", label: "Contrato" },
+        { key: "licitacao", label: "Edital/Licitação" },
+        { key: "orgao", label: "Órgão" },
         { key: "objeto", label: "Objeto" },
         { key: "valor", label: "Valor", render: (value) => `<span class="mono">${fmtCurrency(value)}</span>` },
         { key: "ano", label: "Ano" },

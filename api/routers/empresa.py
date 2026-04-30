@@ -77,9 +77,10 @@ def get_empresa(
             MATCH (f:Fornecedor)
             WHERE f.ni_fornecedor STARTS WITH $cnpj
             MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
+            OPTIONAL MATCH (o:Orgao)-[:CELEBRA]->(c)
             RETURN c.contrato_id AS id, c.objeto AS objeto,
                    c.valor_global AS valor, c.data_assinatura AS data,
-                   c.ano AS ano
+                   c.ano_contrato AS ano, o.nome AS orgao, c.numero_contrato AS licitacao
             ORDER BY c.data_assinatura DESC
             SKIP $offset
             LIMIT $limit
