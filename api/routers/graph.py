@@ -11,13 +11,18 @@ _LABEL_KEY = {
     "Parlamentar": "id",
     "Servidor":    "id",
     "Municipio":   "id",
+    "Regiao":      "id",
+    "Mesorregiao": "id",
+    "Microrregiao":"id",
     "Estado":      "sigla",
     "Partido":     "sigla",
     "Emenda":      "codigo_emenda",
     "ContratoComprasNet": "contrato_id",
-    "Sancao":      "id",
+    "Sancao":      "sancao_id",
     "Eleicao":     "eleicao_id",
     "BemDeclarado": "bem_id",
+    "Emprestimo":  "emprestimo_id",
+    "Fornecedor":  "ni_fornecedor",
 }
 
 
