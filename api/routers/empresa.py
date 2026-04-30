@@ -74,7 +74,9 @@ def get_empresa(
         contratos = run_query(
             s,
             """
-            MATCH (e:Empresa {cnpj_basico: $cnpj})<-[:CELEBRADO_COM]-(c:ContratoComprasNet)
+            MATCH (f:Fornecedor)
+            WHERE f.ni_fornecedor STARTS WITH $cnpj
+            MATCH (c:ContratoComprasNet)-[:CELEBRADO_COM]->(f)
             RETURN c.contrato_id AS id, c.objeto AS objeto,
                    c.valor_global AS valor, c.data_assinatura AS data,
                    c.ano AS ano
