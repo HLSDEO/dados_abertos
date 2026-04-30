@@ -1031,6 +1031,11 @@ function mountProfilePage(cytoscape) {
               ["Sociedades", payload.socios?.length ?? "-"],
               ["Candidaturas", payload.candidaturas?.length ?? "-"],
               ["Parl. vinculado", payload.parlamentar?.nome_parlamentar || "-"],
+              ["Servidor Público", payload.servidor ? (payload.servidor.descricao_cargo || payload.servidor.orgao_exercicio || "Sim") : "-"],
+              ["Sanções diretas", payload.sancoes_diretas?.length || "-"],
+              ["Bens declarados", payload.bens_declarados?.length || "-"],
+              ["Doações feitas", payload.doacoes_feitas?.length || "-"],
+              ["Doações recebidas", payload.doacoes_recebidas?.length || "-"],
             ];
           } else if (nodeLabel === "Empresa") {
             const e = payload.empresa || {};

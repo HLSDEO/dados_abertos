@@ -152,15 +152,70 @@ def get_pessoa(
                 cpf=cpf,
             ).single()
 
+        sancoes_diretas = run_query(
+            s,
+            """
+            MATCH (p:Pessoa {cpf: $cpf})-[:POSSUI_SANCAO]->(san:Sancao)
+            RETURN san.tipo_sancao AS tipo, san.data_inicio AS inicio,
+                   san.motivo_sancao AS motivo, san.orgao_sancionador AS orgao
+            SKIP $offset
+            LIMIT $limit
+            """,
+            cpf=cpf, offset=offset, limit=limit,
+        ).data()
+
+        bens_declarados = run_query(
+            s,
+            """
+            MATCH (p:Pessoa {cpf: $cpf})-[rel:DECLAROU_BEM]->(b:BemDeclarado)
+            RETURN b.tipo_bem AS tipo, b.descricao AS descricao,
+                   b.valor AS valor, b.ano AS ano
+            ORDER BY b.ano DESC, b.valor DESC
+            SKIP $offset
+            LIMIT $limit
+            """,
+            cpf=cpf, offset=offset, limit=limit,
+        ).data()
+
+        doacoes_feitas = run_query(
+            s,
+            """
+            MATCH (p:Pessoa {cpf: $cpf})-[d:DOOU_PARA]->(cand:Pessoa)
+            RETURN cand.nome AS candidato, cand.cpf AS cpf_candidato,
+                   d.valor AS valor, d.ano AS ano
+            ORDER BY d.ano DESC, d.valor DESC
+            SKIP $offset
+            LIMIT $limit
+            """,
+            cpf=cpf, offset=offset, limit=limit,
+        ).data()
+
+        doacoes_recebidas = run_query(
+            s,
+            """
+            MATCH (doador)-[d:DOOU_PARA]->(p:Pessoa {cpf: $cpf})
+            RETURN coalesce(doador.nome, doador.nome_doador) AS doador,
+                   labels(doador)[0] AS tipo_doador, d.valor AS valor, d.ano AS ano
+            ORDER BY d.ano DESC, d.valor DESC
+            SKIP $offset
+            LIMIT $limit
+            """,
+            cpf=cpf, offset=offset, limit=limit,
+        ).data()
+
     payload = {
         "pagination": {"limit": limit, "offset": offset},
         "pessoa":           pessoa,
         "socios":           socios,
         "servidor":         dict(servidor["srv"]) if servidor else None,
         "candidaturas":     candidaturas,
+        "sancoes_diretas":  sancoes_diretas,
         "sancoes_indiretas": sancoes_indir,
         "duplicatas":       duplicatas,
         "parlamentar":      dict(parlamentar) if parlamentar else None,
+        "bens_declarados":  bens_declarados,
+        "doacoes_feitas":   doacoes_feitas,
+        "doacoes_recebidas": doacoes_recebidas,
     }
     cache_set_json(cache_key, payload, ttl_seconds=_PESSOA_CACHE_TTL)
     return payload
