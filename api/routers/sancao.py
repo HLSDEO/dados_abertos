@@ -17,19 +17,11 @@ def get_sancao(
 
     driver = get_driver()
     with driver.session() as s:
-        # No Neo4j, o ID da sanção pode ser o ID interno ou uma propriedade específica.
-        # Como o frontend passa o nodeId (que no Neo4j é o uid), vamos buscar por uid.
+        # Busca pelo sancao_id, que é o identificador único definido no pipeline
         node = run_query(
             s,
-            "MATCH (s:Sancao) WHERE s.uid = $sancao_id RETURN s", sancao_id=sancao_id
+            "MATCH (s:Sancao) WHERE s.sancao_id = $sancao_id RETURN s", sancao_id=sancao_id
         ).single()
-        
-        if not node:
-            # Tenta buscar por id se uid não funcionar
-            node = run_query(
-                s,
-                "MATCH (s:Sancao) WHERE s.id = $sancao_id RETURN s", sancao_id=sancao_id
-            ).single()
 
         if not node:
             raise HTTPException(404, f"Sanção não encontrada: {sancao_id}")
@@ -40,7 +32,7 @@ def get_sancao(
             s,
             """
             MATCH (e:Empresa)-[:POSSUI_SANCAO]->(s:Sancao)
-            WHERE s.uid = $sancao_id OR s.id = $sancao_id
+            WHERE s.sancao_id = $sancao_id
             RETURN e.cnpj_basico AS cnpj, e.razao_social AS razao_social
             """,
             sancao_id=sancao_id,
