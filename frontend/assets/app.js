@@ -1201,14 +1201,17 @@ function renderEmpresaSections(payload) {
       payload.contratos || []
     )}
     <div style="height:16px;"></div>
-    ${renderSimpleTable(
-      [
-        { key: "tipo", label: "Sancao" },
-        { key: "inicio", label: "Inicio", render: (value) => fmtDate(value) },
-        { key: "orgao", label: "Orgao" },
-      ],
-      payload.sancoes || []
-    )}
+     ${renderSimpleTable(
+       [
+         { key: "tipo", label: "Sancao" },
+         { key: "inicio", label: "Inicio", render: (value) => fmtDate(value) },
+         { key: "fim", label: "Fim", render: (value) => fmtDate(value) },
+         { key: "orgao", label: "Orgao" },
+         { key: "motivo", label: "Motivo" },
+         { key: "publicacao", label: "Publicação", render: (value) => fmtDate(value) },
+       ],
+       payload.sancoes || []
+     )}
   `;
 }
 
