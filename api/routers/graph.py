@@ -53,6 +53,10 @@ def _serialize_node(node) -> dict:
         nome = node.get("descricao") or ""
     elif label == "ContratoComprasNet":
         nome = node.get("objeto") or ""
+    elif label == "Despesa":
+        nome = node.get("tipo_despesa") or node.get("nome_favorecido") or "Despesa"
+    elif label == "Emprestimo":
+        nome = node.get("produto") or node.get("descricao_do_projeto") or "Empréstimo"
     else:
         nome = node.get("nome") or node.get("razao_social")
         if not nome:

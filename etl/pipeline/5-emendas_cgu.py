@@ -165,7 +165,8 @@ MERGE (e)-[:TEM_CONVENIO]->(c)
 Q_DESPESA_NOS = """
 UNWIND $rows AS r
 MERGE (d:Despesa {codigo_despesa: r.codigo_despesa})
-SET d.valor_recebido  = toFloat(r.valor_recebido),
+SET d.despesa_id      = r.codigo_despesa,
+    d.valor_recebido  = toFloat(r.valor_recebido),
     d.nome_favorecido = r.nome_favorecido,
     d.tipo_favorecido = r.tipo_favorecido,
     d.cnpj_favorecido = r.cnpj_favorecido,

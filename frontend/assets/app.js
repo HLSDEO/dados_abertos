@@ -994,6 +994,7 @@ function mountProfilePage(cytoscape) {
           Sancao: `/sancao/${encodeURIComponent(nodeId)}`,
           Emprestimo: `/emprestimo/${encodeURIComponent(nodeId)}`,
           Despesa: `/despesa/${encodeURIComponent(nodeId)}`,
+          Emenda: `/emenda/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1120,6 +1121,20 @@ function mountProfilePage(cytoscape) {
               ["Fornecedor", payload.fornecedor?.razao_social || d.nome_fornecedor || "-"],
               ["CNPJ Fornecedor", maskCNPJ(payload.fornecedor?.cnpj_basico)],
               ["Fonte", d.fonte_nome || "-"],
+            ];
+          } else if (nodeLabel === "Emenda") {
+            const e = payload.emenda || {};
+            titleText = e.codigo_emenda || titleText;
+            rows = [
+              ["Tipo", e.tipo_emenda || "-"],
+              ["Ano", e.ano_emenda || "-"],
+              ["Valor Empenhado", fmtCurrency(e.valor_empenhado)],
+              ["Valor Pago", fmtCurrency(e.valor_pago)],
+              ["Localidade", e.localidade_gasto || "-"],
+              ["Parlamentar", payload.parlamentar?.nome || "-"],
+              ["Partido/UF", (payload.parlamentar?.partido || "-") + " / " + (payload.parlamentar?.uf || "-")],
+              ["Beneficiados", payload.empresas?.length || "-"],
+              ["Fonte", e.fonte_nome || "-"],
             ];
           }
 
