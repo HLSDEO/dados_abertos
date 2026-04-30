@@ -23,6 +23,12 @@ _LABEL_KEY = {
     "BemDeclarado": "bem_id",
     "Emprestimo":  "emprestimo_id",
     "Fornecedor":  "ni_fornecedor",
+    "Despesa":     "despesa_id",
+    "Licitacao":   "numero_controle",
+    "ItemResultado":"item_id",
+    "Orgao":       "orgao_cnpj",
+    "UnidadeGestora":"ug_codigo",
+    "DividaAtiva": "divida_id",
 }
 
 
