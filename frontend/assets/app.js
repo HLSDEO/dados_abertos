@@ -991,6 +991,7 @@ function mountProfilePage(cytoscape) {
           Empresa: `/empresa/${encodeURIComponent(nodeId)}`,
           Parlamentar: `/parlamentar/${encodeURIComponent(nodeId)}`,
           ContratoComprasNet: `/contrato/${encodeURIComponent(nodeId)}`,
+          Sancao: `/sancao/${encodeURIComponent(nodeId)}`,
         };
         const ep = endpointMap[nodeLabel];
 
@@ -1080,6 +1081,19 @@ function mountProfilePage(cytoscape) {
               const totalEmpenhado = payload.empenhos.reduce((sum, e) => sum + (Number(e.valor) || 0), 0);
               rows.push(["Total Empenhado", fmtCurrency(totalEmpenhado)]);
             }
+          } else if (nodeLabel === "Sancao") {
+            const s = payload.sancao || {};
+            titleText = s.tipo_sancao || titleText;
+            rows = [
+              ["Tipo", s.tipo_sancao || "-"],
+              ["Início", fmtDate(s.data_inicio_sancao)],
+              ["Fim", fmtDate(s.data_fim_sancao)],
+              ["Órgão", s.orgao_sancionador || "-"],
+              ["Motivo", s.motivo_sancao || "-"],
+              ["Publicação", fmtDate(s.data_publicacao)],
+              ["Empresa", payload.empresa?.razao_social || "-"],
+              ["CNPJ", maskCNPJ(payload.empresa?.cnpj)],
+            ];
           }
 
           body.innerHTML = `
