@@ -58,10 +58,13 @@ def get_empresa(
             s,
             """
             MATCH (e:Empresa {cnpj_basico: $cnpj})-[:POSSUI_SANCAO]->(san:Sancao)
-            RETURN san.tipo_sancao AS tipo, san.data_inicio_sancao AS inicio,
-                    san.data_fim_sancao AS fim, san.motivo_sancao AS motivo,
-                    san.orgao_sancionador AS orgao, san.data_publicacao AS publicacao
-            ORDER BY san.data_inicio_sancao DESC
+            RETURN san.tipo_sancao AS tipo, 
+                   san.data_inicio AS inicio,
+                   san.data_fim AS fim, 
+                   san.motivo_sancao AS motivo,
+                   san.orgao_sancionador AS orgao,
+                   null AS publicacao
+            ORDER BY san.data_inicio DESC
             SKIP $offset
             LIMIT $limit
             """,
