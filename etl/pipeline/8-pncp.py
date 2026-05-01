@@ -262,6 +262,12 @@ def _t_contratos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict],
         valor       = _safe_float(r.get("valor_global") or r.get("valor_inicial") or 0)
         objeto      = _safe_str(r.get("objeto") or "")
         data_pub    = _safe_str(r.get("data_publicacao") or "")
+        
+        # Orgao e Licitacao
+        orgao_codigo = _safe_str(r.get("orgao_codigo") or "")
+        orgao_nome   = _safe_str(r.get("orgao_nome") or "")
+        licitacao_num = _safe_str(r.get("licitacao_numero") or "")
+        modalidade   = _safe_str(r.get("modalidade") or "")
 
         # Fornecedor
         cnpj_forn_raw = _safe_str(
@@ -288,7 +294,10 @@ def _t_contratos(chunk: list[dict]) -> tuple[list[dict], list[dict], list[dict],
 
         contratos.append({
             "contrato_id":      contrato_id,
-            "cnpj_orgao":       "",   # não disponível no CSV
+            "orgao_codigo":     orgao_codigo,
+            "orgao_nome":       orgao_nome,
+            "licitacao_numero": licitacao_num,
+            "modalidade":       modalidade,
             "ano_contrato":     ano,
             "numero_contrato":  num_contrato,
             "sequencial":       seq,
@@ -428,13 +437,14 @@ MERGE (c:ContratoComprasNet {contrato_id: r.contrato_id})
 SET
   c.numero_contrato = r.numero_contrato,
   c.ano_contrato    = toInteger(r.ano_contrato),
-  c.sequicial       = r.sequencial,
-  c.valor_global     = toFloat(r.valor_global),
-  c.objeto           = r.objeto,
-  c.data_assinatura  = r.data_assinatura,
-  c.data_publicacao  = r.data_publicacao,
-  c.cnpj_orgao       = r.cnpj_orgao,
-  c.atualizado_em    = datetime()
+  c.sequencial      = r.sequencial,
+  c.valor_global    = toFloat(r.valor_global),
+  c.objeto          = r.objeto,
+  c.data_assinatura = r.data_assinatura,
+  c.data_publicacao = r.data_publicacao,
+  c.orgao_codigo    = r.orgao_codigo,
+  c.orgao_nome      = r.orgao_nome,
+  c.atualizado_em   = datetime()
 """
 
 Q_CONTRATO_FORN = """
@@ -452,8 +462,19 @@ MERGE (e)-[:CELEBROU_CONTRATO]->(c)
 Q_CONTRATO_ORGAO = """
 UNWIND $rows AS r
 MATCH (c:ContratoComprasNet {contrato_id: r.contrato_id})
-MATCH (o:Orgao {cnpj: r.cnpj_orgao})
+WHERE r.orgao_codigo IS NOT NULL AND r.orgao_codigo <> ""
+MERGE (o:Orgao {id_orgao: r.orgao_codigo})
+  ON CREATE SET o.no_orgao = r.orgao_nome, o.fonte_nome = r.fonte_nome
 MERGE (o)-[:CELEBRA]->(c)
+"""
+
+Q_CONTRATO_LICITACAO = """
+UNWIND $rows AS r
+MATCH (c:ContratoComprasNet {contrato_id: r.contrato_id})
+WHERE r.licitacao_numero IS NOT NULL AND r.licitacao_numero <> ""
+MERGE (l:Licitacao {numero_controle: r.licitacao_numero})
+  ON CREATE SET l.modalidade_nome = r.modalidade
+MERGE (c)-[:VINCULADO_A]->(l)
 """
 
 Q_EMPENHO_UPSERT = """
@@ -543,6 +564,8 @@ def _load_contratos(driver, csv_path: Path, limite: int | None = None, stats: di
                     cont = cont[:restante]
             if cont:
                 run_batches(session, Q_CONTRATO_UPSERT, cont)
+                run_batches(session, Q_CONTRATO_ORGAO, cont)
+                run_batches(session, Q_CONTRATO_LICITACAO, cont)
                 total_cont += len(cont)
                 stats['total'] += len(cont)
             if forn:
