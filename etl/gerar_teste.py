@@ -984,16 +984,7 @@ def generate_pgfn_data(empresas):
 
 if __name__ == "__main__":
 
-    if os.path.exists(DATA_DIR):
-        for item in os.listdir(DATA_DIR):
-            path = os.path.join(DATA_DIR, item)
-            try:
-                if os.path.isdir(path):
-                    shutil.rmtree(path)
-                else:
-                    os.remove(path)
-            except Exception as e:
-                print(f"[WARN] {e}")
+    print("Aviso: Dados serão gerados sobrescrevendo arquivos específicos dentro de DATA_DIR sem apagar outras pastas.")
 
     empresas = generate_empresas()
 
