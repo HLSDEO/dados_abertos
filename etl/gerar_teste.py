@@ -41,6 +41,187 @@ def generate_empresas():
     return empresas
 
 # ─────────────────────────────────────────
+# SIAFI
+# ─────────────────────────────────────────
+
+def generate_siafi_data():
+    """
+    Gera dados de SIAFI — Unidades Gestoras, Órgãos e Esferas Administrativas
+    
+    Estrutura esperada pelo pipeline 3-siafi.py:
+      Arquivo Excel: data/siafi/unidades.xlsx
+      Colunas: CD_UASG, SG_UASG, NO_UASG, ID_ORGAO, NO_ORGAO, 
+               ID_ESFERA_ADMINISTRATIVA, NO_ESFERA_ADMINISTRATIVA
+    """
+    print("Gerando dados do SIAFI...")
+    
+    siafi_dir = os.path.join(DATA_DIR, "siafi")
+    os.makedirs(siafi_dir, exist_ok=True)
+    
+    # ─────────────────────────────────────────
+    # Definições de esferas administrativas
+    # ─────────────────────────────────────────
+    
+    esferas_info = [
+        {"id_esfera": "1", "nome": "FEDERAL"},
+        {"id_esfera": "2", "nome": "ESTADUAL"},
+        {"id_esfera": "3", "nome": "MUNICIPIO CAPITAL"},
+        {"id_esfera": "4", "nome": "MUNICIPIO SIGNIFICATIVO"},
+        {"id_esfera": "5", "nome": "DEMAIS MUNICIPIOS"},
+    ]
+    
+    # ─────────────────────────────────────────
+    # Definições de órgãos (diversos níveis)
+    # ─────────────────────────────────────────
+    
+    orgaos_info = [
+        # Órgãos Federais
+        {
+            "id_orgao": "14000",
+            "nome": "MINISTERIO DA SAUDE",
+            "id_esfera": "1",
+            "sigla": "MS",
+            "tipo": "federal"
+        },
+        {
+            "id_orgao": "26000",
+            "nome": "MINISTERIO DA EDUCACAO",
+            "id_esfera": "1",
+            "sigla": "MEC",
+            "tipo": "federal"
+        },
+        {
+            "id_orgao": "27000",
+            "nome": "MINISTERIO DA DEFESA",
+            "id_esfera": "1",
+            "sigla": "MD",
+            "tipo": "federal"
+        },
+        # Órgãos Estaduais
+        {
+            "id_orgao": "40000",
+            "nome": "ESTADO DE SAO PAULO",
+            "id_esfera": "2",
+            "sigla": "SP",
+            "tipo": "estadual"
+        },
+        {
+            "id_orgao": "41000",
+            "nome": "ESTADO DE MINAS GERAIS",
+            "id_esfera": "2",
+            "sigla": "MG",
+            "tipo": "estadual"
+        },
+        {
+            "id_orgao": "42000",
+            "nome": "ESTADO DO ESPIRITO SANTO",
+            "id_esfera": "2",
+            "sigla": "ES",
+            "tipo": "estadual"
+        },
+        {
+            "id_orgao": "43000",
+            "nome": "ESTADO DO RIO DE JANEIRO",
+            "id_esfera": "2",
+            "sigla": "RJ",
+            "tipo": "estadual"
+        },
+        # Órgãos Municipais (Capitais)
+        {
+            "id_orgao": "50000",
+            "nome": "MUNICIPIO DE BRASILIA",
+            "id_esfera": "3",
+            "sigla": "BSB",
+            "tipo": "municipal"
+        },
+        {
+            "id_orgao": "50001",
+            "nome": "MUNICIPIO DE SAO PAULO",
+            "id_esfera": "3",
+            "sigla": "SPO",
+            "tipo": "municipal"
+        },
+        {
+            "id_orgao": "50002",
+            "nome": "MUNICIPIO DE SERRA",
+            "id_esfera": "3",
+            "sigla": "SRR",
+            "tipo": "municipal"
+        },
+        {
+            "id_orgao": "50003",
+            "nome": "MUNICIPIO DE RIO DE JANEIRO",
+            "id_esfera": "3",
+            "sigla": "RIO",
+            "tipo": "municipal"
+        },
+    ]
+    
+    # ─────────────────────────────────────────
+    # Gerar UASGs (Unidades Administrativas de Serviços Gerais)
+    # ─────────────────────────────────────────
+    
+    uasgs = []
+    contador_uasg = 1000
+    
+    for orgao in orgaos_info:
+        
+        # Federal: 3-5 UASGs por órgão
+        if orgao["tipo"] == "federal":
+            num_uasgs = random.randint(3, 5)
+        # Estadual: 2-4 UASGs
+        elif orgao["tipo"] == "estadual":
+            num_uasgs = random.randint(2, 4)
+        # Municipal: 1-3 UASGs
+        else:
+            num_uasgs = random.randint(1, 3)
+        
+        for i in range(num_uasgs):
+            cd_uasg = str(contador_uasg).zfill(6)
+            contador_uasg += 1
+            
+            sigla = orgao["sigla"]
+            
+            # Nome da UASG reflete tipo de órgão
+            if orgao["tipo"] == "federal":
+                nome_uasg = f"DIVISAO DE {orgao['sigla']} - UNIDADE {i+1}"
+            elif orgao["tipo"] == "estadual":
+                nome_uasg = f"SECRETARIA DE {orgao['sigla']} - UNIDADE {i+1}"
+            else:
+                nome_uasg = f"PREFEITURA {orgao['sigla']} - SETOR {i+1}"
+            
+            uasgs.append({
+                "CD_UASG": cd_uasg,
+                "SG_UASG": sigla,
+                "NO_UASG": nome_uasg,
+                "ID_ORGAO": orgao["id_orgao"],
+                "NO_ORGAO": orgao["nome"],
+                "ID_ESFERA_ADMINISTRATIVA": orgao["id_esfera"],
+                "NO_ESFERA_ADMINISTRATIVA": next(
+                    (e["nome"] for e in esferas_info if e["id_esfera"] == orgao["id_esfera"]),
+                    "NAO CLASSIFICADO"
+                )
+            })
+    
+    # ─────────────────────────────────────────
+    # Salvar em Excel (conforme esperado pelo pipeline)
+    # ─────────────────────────────────────────
+    
+    df = pd.DataFrame(uasgs)
+    xlsx_path = os.path.join(siafi_dir, "unidades.xlsx")
+    
+    # Para salvar em Excel é necessário openpyxl
+    try:
+        df.to_excel(xlsx_path, index=False, sheet_name="SIAFI")
+        print(f"✓ SIAFI unidades: {len(uasgs)} UASGs em {xlsx_path}")
+    except ImportError:
+        log_msg = f"  openpyxl não disponível. Alternativa: salvando como CSV"
+        print(log_msg)
+        csv_path = os.path.join(siafi_dir, "unidades.csv")
+        df.to_csv(csv_path, index=False)
+        print(f"✓ SIAFI unidades: {len(uasgs)} UASGs em {csv_path} (CSV)")
+
+# ─────────────────────────────────────────
 # CNPJ
 # ─────────────────────────────────────────
 
@@ -1046,6 +1227,7 @@ if __name__ == "__main__":
 
     empresas = generate_empresas()
 
+    generate_siafi_data()
     generate_cnpj_data(empresas)
     generate_ibge_data()
     generate_pncp_data(empresas)
