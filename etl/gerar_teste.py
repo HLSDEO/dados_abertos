@@ -77,6 +77,8 @@ def generate_cnpj_data(empresas):
 
         if e["cenario"] == 2:
             cpf = CPF_MARIA  # servidor como sócio
+        elif e["cenario"] == 5:
+            cpf = CPF_POLITICO # politico como sócio
 
         socio_rows.append({
             "cnpj_basico": e["cnpj_basico"],
@@ -411,7 +413,8 @@ def generate_servidores_data(empresas):
         'nome': 'MARIA SERVIDORA',
         'cargo': 'ANALISTA',
         'org_exercicio': 'MINISTERIO DA SAUDE',
-        'uf_exercicio': 'DF'
+        'uf_exercicio': 'DF',
+        'situacao_vinculo': 'ATIVO'
     })
 
     # ─────────────────────────────────────────
@@ -427,7 +430,8 @@ def generate_servidores_data(empresas):
                 'nome': f'SERVIDOR_VINCULADO_{i}',
                 'cargo': random.choice(['ANALISTA', 'GESTOR', 'DIRETOR']),
                 'org_exercicio': 'MINISTERIO DA SAUDE',
-                'uf_exercicio': 'DF'
+                'uf_exercicio': 'DF',
+                'situacao_vinculo': 'ATIVO'
             })
 
         # outros cenários → ruído (dados normais)
@@ -442,7 +446,8 @@ def generate_servidores_data(empresas):
                     'MINISTERIO DA EDUCACAO',
                     'MINISTERIO DA JUSTICA'
                 ]),
-                'uf_exercicio': random.choice(['DF', 'SP', 'RJ'])
+                'uf_exercicio': random.choice(['DF', 'SP', 'RJ']),
+                'situacao_vinculo': 'ATIVO'
             })
 
     # ─────────────────────────────────────────
@@ -474,12 +479,12 @@ def generate_emendas_cgu_data(empresas):
     for i, e in enumerate(empresas):
 
         # gerar apenas para cenários relevantes
-        if e["cenario"] not in [3, 4]:
+        if e["cenario"] not in [3, 4, 5]:
             continue
 
         cod_emenda = f"2026{str(i).zfill(6)}"
         cod_autor = str(random.randint(1000, 9999))
-        nome_autor = "POLITICO TESTE"
+        nome_autor = "POLITICO INFLUENTE" if e["cenario"] == 5 else "POLITICO TESTE"
 
         cod_funcao = random.choice(["10", "12", "15"])
         nome_funcao = {
@@ -591,9 +596,9 @@ def generate_camara_data(empresas):
     for i, e in enumerate(empresas):
 
         # ─────────────────────────────────────────
-        # CENÁRIO 4 → uso de verba parlamentar (suspeito)
+        # CENÁRIO 4 e 5 → uso de verba parlamentar (suspeito)
         # ─────────────────────────────────────────
-        if e["cenario"] == 4:
+        if e["cenario"] in [4, 5]:
             for j in range(random.randint(3, 8)):
                 rows.append({
                     "despesa_id": f"CAM_{i}_{j}",
@@ -606,7 +611,7 @@ def generate_camara_data(empresas):
                     "nome_fornecedor": e["razao_social"],
                     "partido": "PTST",
                     "uf": "DF",
-                    "nome_parlamentar": "DEPUTADO INFLUENTE",
+                    "nome_parlamentar": "POLITICO INFLUENTE" if e["cenario"] == 5 else "DEPUTADO INFLUENTE",
                     "fonte_nome": "Câmara dos Deputados"
                 })
 
@@ -937,6 +942,43 @@ def generate_senado_data(empresas):
     print(f"✓ Despesas Senado: {len(data)}")
 
 # ─────────────────────────────────────────
+# PGFN
+# ─────────────────────────────────────────
+
+def generate_pgfn_data(empresas):
+    print("Gerando dados da PGFN (CSV)...")
+    import os, random
+    import pandas as pd
+    
+    # Needs DATA_DIR
+    pgfn_dir = os.path.join(DATA_DIR, "pgfn")
+    os.makedirs(pgfn_dir, exist_ok=True)
+    
+    dividas = []
+    
+    for i, e in enumerate(empresas):
+        if e["cenario"] == 4:
+            for j in range(random.randint(1, 3)):
+                dividas.append({
+                    "numero_inscricao": f"PGFN_{i}_{j}",
+                    "cpf_cnpj": e["cnpj"],
+                    "nome_devedor": e["razao_social"],
+                    "tipo_credito": "Tributario",
+                    "receita_principal": "IRPJ",
+                    "valor_consolidado": str(round(random.uniform(10000, 500000), 2)).replace(".", ","),
+                    "situacao": "Ativa",
+                    "situacao_juridica": "Ajuizada",
+                    "data_inscricao": "2024-01-01",
+                    "indicador_ajuizado": "SIM",
+                    "uf_devedor": "ES",
+                    "municipio_devedor": "SERRA",
+                })
+
+    if dividas:
+        pd.DataFrame(dividas).to_csv(os.path.join(pgfn_dir, "divida_ativa.csv"), index=False)
+        print(f"✓ Dívidas Ativas: {len(dividas)}")
+
+# ─────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────
 
@@ -966,5 +1008,6 @@ if __name__ == "__main__":
     generate_senado_data(empresas)
     generate_tse_data(empresas)
     generate_tse_bens_data(empresas)
+    generate_pgfn_data(empresas)
 
     print("✓ Dados sintéticos com cenários gerados!")
