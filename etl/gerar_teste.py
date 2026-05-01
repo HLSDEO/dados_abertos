@@ -979,6 +979,64 @@ def generate_pgfn_data(empresas):
         print(f"✓ Dívidas Ativas: {len(dividas)}")
 
 # ─────────────────────────────────────────
+# CPGF
+# ─────────────────────────────────────────
+
+def generate_cpgf_data(empresas):
+    print("Gerando dados de CPGF...")
+    
+    cpgf_dir = os.path.join(DATA_DIR, "cpgf")
+    os.makedirs(cpgf_dir, exist_ok=True)
+    
+    rows = []
+    
+    for i, e in enumerate(empresas):
+        # cenário 2 → empresa cujo sócio é servidor (vamos simular ele mesmo comprando)
+        if e["cenario"] == 2:
+            for j in range(random.randint(2, 5)):
+                rows.append({
+                    "CÓDIGO ÓRGÃO SUPERIOR": "36000",
+                    "NOME ÓRGÃO SUPERIOR": "MINISTERIO DA SAUDE",
+                    "CÓDIGO ÓRGÃO": "36000",
+                    "NOME ÓRGÃO": "MINISTERIO DA SAUDE",
+                    "CÓDIGO UNIDADE GESTORA": "123456",
+                    "NOME UNIDADE GESTORA": "UNIDADE DE SAUDE TESTE",
+                    "ANO EXTRATO": "2024",
+                    "MÊS EXTRATO": "01",
+                    "CPF PORTADOR": f"***.{CPF_MARIA[3:6]}.{CPF_MARIA[6:9]}-**",
+                    "NOME PORTADOR": "MARIA SERVIDORA",
+                    "CNPJ OU CPF FAVORECIDO": e["cnpj"],
+                    "NOME FAVORECIDO": e["razao_social"],
+                    "TRANSAÇÃO": "COMPRA A/V - R$ - APRES",
+                    "DATA TRANSAÇÃO": f"1{j}/01/2024",
+                    "VALOR TRANSAÇÃO": str(round(random.uniform(500, 3000), 2)).replace(".", ",")
+                })
+        
+        # ruído aleatório
+        elif random.random() < 0.2:
+            rows.append({
+                "CÓDIGO ÓRGÃO SUPERIOR": "36000",
+                "NOME ÓRGÃO SUPERIOR": "MINISTERIO DA SAUDE",
+                "CÓDIGO ÓRGÃO": "36000",
+                "NOME ÓRGÃO": "MINISTERIO DA SAUDE",
+                "CÓDIGO UNIDADE GESTORA": "123456",
+                "NOME UNIDADE GESTORA": "UNIDADE DE SAUDE TESTE",
+                "ANO EXTRATO": "2024",
+                "MÊS EXTRATO": "01",
+                "CPF PORTADOR": "***.999.999-**",
+                "NOME PORTADOR": "PORTADOR GENERICO",
+                "CNPJ OU CPF FAVORECIDO": e["cnpj"],
+                "NOME FAVORECIDO": e["razao_social"],
+                "TRANSAÇÃO": "COMPRA A/V - R$ - APRES",
+                "DATA TRANSAÇÃO": "15/01/2024",
+                "VALOR TRANSAÇÃO": "150,00"
+            })
+
+    if rows:
+        pd.DataFrame(rows).to_csv(os.path.join(cpgf_dir, "cpgf.csv"), index=False, sep=";", encoding="latin-1")
+        print(f"✓ Transações CPGF: {len(rows)}")
+
+# ─────────────────────────────────────────
 # MAIN
 # ─────────────────────────────────────────
 
@@ -1000,5 +1058,6 @@ if __name__ == "__main__":
     generate_tse_data(empresas)
     generate_tse_bens_data(empresas)
     generate_pgfn_data(empresas)
+    generate_cpgf_data(empresas)
 
     print("✓ Dados sintéticos com cenários gerados!")
