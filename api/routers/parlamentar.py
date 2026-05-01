@@ -16,12 +16,12 @@ def get_parlamentar(
         # Tenta primeiro por id_camara (Câmara), depois por id, depois por cpf
         node = run_query(
             s,
-            "MATCH (p:Parlamentar {id_camara: $id}) RETURN p", id=parlamentar_id
+            "MATCH (p:Parlamentar {codigo_autor: $id}) RETURN p", id=parlamentar_id
         ).single()
         if not node:
             node = run_query(
                 s,
-                "MATCH (p:Parlamentar {id: $id}) RETURN p", id=parlamentar_id
+                "MATCH (p:Parlamentar {id_camara: $id}) RETURN p", id=parlamentar_id
             ).single()
         if not node:
             node = run_query(

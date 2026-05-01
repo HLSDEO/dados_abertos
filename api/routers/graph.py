@@ -8,7 +8,7 @@ _LABEL_KEY = {
     "Pessoa":      "cpf",
     "Empresa":     "cnpj_basico",
     "Partner":     "partner_id",
-    "Parlamentar": "id",
+    "Parlamentar": "codigo_autor",
     "Servidor":    "id",
     "Municipio":   "id",
     "Regiao":      "id",
@@ -32,7 +32,7 @@ _LABEL_KEY = {
 }
 
 
-_NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
+_NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda", "codigo_autor", "nome_autor",
                  "cpf", "cnpj_basico", "cnpj", "uf", "situacao_cadastral",
                  "gds_pagerank", "gds_comunidade", "gds_betweenness",
                  "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
@@ -51,6 +51,8 @@ def _serialize_node(node) -> dict:
         nome = node.get("ds_eleicao") or ""
     elif label == "BemDeclarado":
         nome = node.get("descricao") or ""
+    elif label == "Parlamentar":
+        nome = node.get("nome_autor") or node.get("codigo_autor")
     elif label == "ContratoComprasNet":
         nome = node.get("objeto") or ""
     elif label == "Despesa":
