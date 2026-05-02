@@ -32,7 +32,7 @@ def get_emenda(
             """
             MATCH (p:Parlamentar)-[:AUTORA_DE]->(e:Emenda)
             WHERE e.codigo_emenda = $codigo_emenda
-            RETURN p.id_camara AS id, p.nome_autor AS nome, p.partido AS partido, p.uf AS uf
+            RETURN p.codigo_autor AS id, p.nome_autor AS nome, p.partido AS partido, p.uf AS uf
             """,
             codigo_emenda=codigo_emenda,
         ).single()

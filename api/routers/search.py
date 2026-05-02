@@ -5,7 +5,7 @@ from deps import get_driver, run_query
 router = APIRouter(prefix="/search", tags=["search"])
 _SEARCH_CACHE_TTL = 30
 
-_LABEL_ID = {
+_LABEL_KEY = {
     "Pessoa":      "cpf",
     "Empresa":     "cnpj_basico",
     "Partner":     "partner_id",
@@ -15,6 +15,7 @@ _LABEL_ID = {
     "Regiao":      "id",
     "Mesorregiao": "id",
     "Microrregiao":"id",
+    "Esfera":"no_esfera",
     "Estado":      "sigla",
     "Partido":     "sigla",
     "Emenda":      "codigo_emenda",
@@ -27,9 +28,11 @@ _LABEL_ID = {
     "Despesa":     "despesa_id",
     "Licitacao":   "numero_controle",
     "ItemResultado":"item_id",
-    "Orgao":       "orgao_cnpj",
-    "UnidadeGestora":"ug_codigo",
+    "Orgao":       "id_orgao",
+    "UnidadeGestora":"cd_uasg",
     "DividaAtiva": "divida_id",
+    "Convenio": "numero_convenio",
+    "FuncaoOrcamentaria": "codigo_funcao"
 }
 
 

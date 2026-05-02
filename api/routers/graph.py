@@ -14,6 +14,7 @@ _LABEL_KEY = {
     "Regiao":      "id",
     "Mesorregiao": "id",
     "Microrregiao":"id",
+    "Esfera":"no_esfera",
     "Estado":      "sigla",
     "Partido":     "sigla",
     "Emenda":      "codigo_emenda",
@@ -26,15 +27,17 @@ _LABEL_KEY = {
     "Despesa":     "despesa_id",
     "Licitacao":   "numero_controle",
     "ItemResultado":"item_id",
-    "Orgao":       "orgao_cnpj",
-    "UnidadeGestora":"ug_codigo",
+    "Orgao":       "id_orgao",
+    "UnidadeGestora":"cd_uasg",
     "DividaAtiva": "divida_id",
+    "Convenio": "numero_convenio",
+    "FuncaoOrcamentaria": "codigo_funcao"
 }
 
 
 _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda", "codigo_autor", "nome_autor",
                  "cpf", "cnpj_basico", "cnpj", "uf", "situacao_cadastral",
-                 "gds_pagerank", "gds_comunidade", "gds_betweenness",
+                 "gds_pagerank", "gds_comunidade", "gds_betweenness", 
                  "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
                  "tipo_sancao", "data_inicio", "numero_contrato", "valor_contratado_reais",
                  "produto", "setor_bndes", "descricao", "ds_eleicao", "tipo", "nome_urna",
@@ -44,9 +47,18 @@ _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
 def _serialize_node(node) -> dict:
     label = list(node.labels)[0] if node.labels else "Node"
     key   = _LABEL_KEY.get(label)
-    uid   = f"{label}:{node.get(key)}" if key and node.get(key) else f"eid:{node.element_id}"
+    
+    # 1. A MÁGICA ESTÁ AQUI: Manter APENAS UM caractere ':' no uid
+    if key and node.get(key):
+        # Ex: "Parlamentar:6376" -> O frontend corta e pega o "6376" perfeito.
+        uid = f"{label}:{node.get(key)}"
+    else:
+        # Ex: "4:b79e..." vira "4-b79e..."
+        # O uid fica "eid:4-b79e..." -> O frontend corta no ':' e pega o "4-b79e..." inteiro!
+        safe_eid = str(node.element_id).replace(":", "-")
+        uid = f"eid:{safe_eid}"
 
-    # Prioriza nome/razão social conforme o tipo de nó
+    # 2. Seleção de Nomes
     if label == "Eleicao":
         nome = node.get("ds_eleicao") or ""
     elif label == "BemDeclarado":
@@ -67,14 +79,13 @@ def _serialize_node(node) -> dict:
     razao_social = node.get("razao_social") or ""
     cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
 
-    # Propriedades completas (todas as que existem no nó)
     props = {k: node.get(k) for k in _NODE_DISPLAY if node.get(k) is not None}
-    # Garante que nome e razão social estejam em props
     if nome and "nome" not in props:
         props["nome"] = nome
     if razao_social and "razao_social" not in props:
         props["razao_social"] = razao_social
 
+    # 3. Retorno no formato original que o app.js consome sem falhas
     return {
         "uid":          uid,
         "label":        label,

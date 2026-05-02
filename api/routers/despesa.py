@@ -32,7 +32,7 @@ def get_despesa(
             """
             MATCH (p:Parlamentar)-[:GASTOU]->(d:Despesa)
             WHERE d.despesa_id = $despesa_id
-            RETURN p.id_camara AS id_camara, p.nome_parlamentar AS nome, p.partido AS partido, p.uf AS uf
+            RETURN p.codigo_autor AS codigo_autor, p.nome_autor AS nome, p.partido AS partido, p.uf AS uf
             """,
             despesa_id=despesa_id,
         ).single()
