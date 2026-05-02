@@ -41,30 +41,20 @@ _NODE_DISPLAY = ["nome", "razao_social", "nome_autor", "sigla", "codigo_emenda",
                  "tipo_despesa", "valor_liquido", "data_emissao", "ano", "mes",
                  "tipo_sancao", "data_inicio", "numero_contrato", "valor_contratado_reais",
                  "produto", "setor_bndes", "descricao", "ds_eleicao", "tipo", "nome_urna",
-                 "bem_id", "eleicao_id"]
+                 "bem_id", "eleicao_id", "nome_funcao", "objeto"]
 
 
 def _serialize_node(node) -> dict:
     label = list(node.labels)[0] if node.labels else "Node"
     key   = _LABEL_KEY.get(label)
     
-    # 1. A MÁGICA ESTÁ AQUI: Manter APENAS UM caractere ':' no uid
-    if key and node.get(key):
-        # Ex: "Parlamentar:6376" -> O frontend corta e pega o "6376" perfeito.
-        uid = f"{label}:{node.get(key)}"
-    else:
-        # Ex: "4:b79e..." vira "4-b79e..."
-        # O uid fica "eid:4-b79e..." -> O frontend corta no ':' e pega o "4-b79e..." inteiro!
-        safe_eid = str(node.element_id).replace(":", "-")
-        uid = f"eid:{safe_eid}"
-
-    # 2. Seleção de Nomes
+    # 1. PRIMEIRO: TENTAMOS DESCOBRIR O NOME DO NÓ
     if label == "Eleicao":
         nome = node.get("ds_eleicao") or ""
     elif label == "BemDeclarado":
         nome = node.get("descricao") or ""
     elif label == "Parlamentar":
-        nome = node.get("nome_autor") or node.get("codigo_autor")
+        nome = node.get("nome_autor") or node.get("nome_parlamentar") or ""
     elif label == "ContratoComprasNet":
         nome = node.get("objeto") or ""
     elif label == "Despesa":
@@ -75,7 +65,28 @@ def _serialize_node(node) -> dict:
         nome = node.get("nome") or node.get("razao_social")
         if not nome:
             nome = node.get("nome_autor") or node.get("sigla") or ""
+
+    # 2. TENTAMOS ACHAR O ID OFICIAL NO BANCO
+    node_key_value = node.get(key) if key else None
+    if not node_key_value:
+        if label == "Parlamentar":
+            node_key_value = node.get("id_camara") or node.get("cpf") or node.get("id_senado")
+
+    # 3. A MÁGICA DO FALLBACK (ONDE ENTRA O SEU AJUSTE)
+    if node_key_value:
+        # Cenário A: Achou um ID oficial (Ex: "Parlamentar:4606")
+        uid = f"{label}:{node_key_value}"
+    elif nome:
+        # Cenário B: Não tem ID, mas TEM NOME! Usamos o nome como ID.
+        # Higienizamos o nome trocando espaços por underline e removendo ':'
+        nome_limpo = str(nome).replace(" ", "_").replace(":", "-")
+        uid = f"{label}:{nome_limpo}"
+    else:
+        # Cenário C: Falha catastrófica (Sem ID e Sem Nome). Usa o interno do Neo4j.
+        safe_eid = str(node.element_id).replace(":", "-")
+        uid = f"eid:{safe_eid}"
     
+    # 4. PREENCHIMENTO DO RESTO DAS PROPRIEDADES
     razao_social = node.get("razao_social") or ""
     cpf_cnpj = (node.get("cpf") or node.get("cnpj") or node.get("cnpj_basico") or "")
 
@@ -85,16 +96,17 @@ def _serialize_node(node) -> dict:
     if razao_social and "razao_social" not in props:
         props["razao_social"] = razao_social
 
-    # 3. Retorno no formato original que o app.js consome sem falhas
+    # Se por acaso o nome ficou vazio, tenta usar o próprio valor da chave como quebra-galho visual
+    nome_final = nome or str(node_key_value) if node_key_value else nome
+
     return {
         "uid":          uid,
         "label":        label,
-        "nome":         nome,
+        "nome":         nome_final,
         "razao_social": razao_social,
         "cpf_cnpj":     cpf_cnpj,
         "props":        props,
     }
-
 
 def _serialize_rel(rel, src_uid: str, tgt_uid: str) -> dict:
     return {
@@ -167,6 +179,9 @@ def expand(
         edges: list[dict] = []
 
         for record in result:
+            # ---> ADICIONE ESTE PRINT PARA DEPURAÇÃO <---
+            print("Nó Fonte (n):", dict(record["n"]))
+            print("Nó Alvo (m):", dict(record["m"]))
             sn = _serialize_node(record["n"])
             tn = _serialize_node(record["m"])
             nodes_map[sn["uid"]] = sn
