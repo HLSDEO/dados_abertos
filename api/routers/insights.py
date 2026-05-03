@@ -31,7 +31,7 @@ def top_parlamentares(limit: int = 20, driver: Driver = Depends(get_driver)):
     """
     query = """
     MATCH (p:Parlamentar)
-    WHERE exists(p.gds_pagerank) OR exists(p.gds_betweenness)
+    WHERE p.gds_pagerank IS NOT NULL OR p.gds_betweenness IS NOT NULL
     RETURN p.nome_autor AS nome_autor, p.gds_pagerank AS gds_pagerank, p.gds_betweenness AS gds_betweenness, p.id_parlamentar AS id
     ORDER BY p.gds_pagerank DESC
     LIMIT $limit
