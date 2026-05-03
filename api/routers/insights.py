@@ -13,7 +13,7 @@ def top_empresas(limit: int = 20, driver: Driver = Depends(get_driver)):
     """
     query = """
     MATCH (e:Empresa)
-    WHERE exists(e.gds_pagerank)
+    WHERE e.gds_pagerank IS NOT NULL
     RETURN e.razao_social AS razao_social, e.gds_pagerank AS gds_pagerank, e.gds_comunidade AS gds_comunidade, e.cnpj_basico AS id
     ORDER BY e.gds_pagerank DESC
     LIMIT $limit
