@@ -145,14 +145,14 @@ _RELATIONSHIPS_LEAN = {
 }
 
 _RELATIONSHIPS_CORE = {
-    "SOCIO_DE": {"orientation": "NATURAL"},
-    "LOCALIZADA_EM": {"orientation": "NATURAL"},
-    "POSSUI_SANCAO": {"orientation": "NATURAL"},
+    "SOCIO_DE": {"orientation": "UNDIRECTED"},
+    "LOCALIZADA_EM": {"orientation": "UNDIRECTED"},
+    "POSSUI_SANCAO": {"orientation": "UNDIRECTED"},
     "MESMO_QUE": {"orientation": "UNDIRECTED"},
 }
 
 _RELATIONSHIPS_TINY = {
-    "POSSUI_SANCAO": {"orientation": "NATURAL"},
+    "POSSUI_SANCAO": {"orientation": "UNDIRECTED"},
 }
 
 
