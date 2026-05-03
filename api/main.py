@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from deps import get_driver, close_driver
 from observability import MetricsMiddleware, metrics_response
-from routers import search, pessoa, empresa, parlamentar, graph, patterns, pipelines, contrato, sancao, emprestimo, despesa, emenda
+from routers import search, pessoa, empresa, parlamentar, graph, patterns, pipelines, contrato, sancao, emprestimo, despesa, emenda, insights
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +39,7 @@ app.include_router(sancao.router)
 app.include_router(despesa.router)
 app.include_router(emprestimo.router)
 app.include_router(emenda.router)
+app.include_router(insights.router)
 
 
 @app.get("/health")

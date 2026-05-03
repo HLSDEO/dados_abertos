@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { key: "busca", label: "Busca avançada", href: "/index.html", icon: "🔍" },
   { key: "grafo", label: "Explorador de grafo", href: "/grafo.html", icon: "🕸️" },
   { key: "corrupcao", label: "Padrões de corrupção", href: "/corrupcao.html", icon: "⚠️" },
+  { key: "consultas", label: "Consultas úteis", href: "/consultas.html", icon: "📊" },
   { key: "pipelines", label: "Status dos pipeline", href: "/pipelines.html", icon: "📡" },
 ];
 
@@ -1533,6 +1534,191 @@ function mountPipelinesPage() {
   loadPipelines();
 }
 
+function mountInsightsPage() {
+  const root = $("#page-content");
+  root.innerHTML = `
+    ${renderHeader({
+      label: "Consultas uteis",
+      title: "Análises exploratórias do grafo",
+      subtitle: "Consultas pré-definidas que combinam múltiplas bases e algoritmos de centralidade para revelar padrões e entidades relevantes.",
+    })}
+    <section class="stack">
+      <section class="card">
+        <div class="card-title">1. Top 20 empresas mais influentes (PageRank)</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Empresas com maior autoridade no grafo, baseado no algoritmo PageRank do GDS.
+        </div>
+        <button class="button" id="btn-top-empresas">Executar consulta</button>
+        <div id="result-top-empresas" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">2. Parlamentares mais influentes na rede</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Parlamentares com maior PageRank e betweenness, indicando posição central na rede de emendas e empresas.
+        </div>
+        <button class="button" id="btn-top-parlamentares">Executar consulta</button>
+        <div id="result-top-parlamentares" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">3. Comunidades suspeitas (empresa + sanção + emenda)</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Empresas na mesma comunidade GDS que possuem sanções e são destinatárias de emendas parlamentares.
+        </div>
+        <button class="button" id="btn-comunidades-suspeitas">Executar consulta</button>
+        <div id="result-comunidades-suspeitas" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">4. Empresas similares com sanção (possíveis laranjas)</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Pares de empresas com similaridade >= 0.95 onde pelo menos uma possui sanção.
+        </div>
+        <button class="button" id="btn-empresas-similares">Executar consulta</button>
+        <div id="result-empresas-similares" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">5. Servidores que são sócios de empresas sancionadas</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Pessoas que são servidores públicos e também sócios de empresas com sanções.
+        </div>
+        <button class="button" id="btn-servidores-socios">Executar consulta</button>
+        <div id="result-servidores-socios" style="margin-top:14px;"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">6. Intermediários de alta betweenness (possíveis laranjas)</div>
+        <div class="muted" style="margin-bottom:12px;">
+          Pessoas com betweenness > 1000 que atuam como intermediários na rede.
+        </div>
+        <button class="button" id="btn-intermediarios">Executar consulta</button>
+        <div id="result-intermediarios" style="margin-top:14px;"></div>
+      </section>
+    </section>
+  `;
+
+  // Renderizador de tabela simples
+  function renderTable(headers, rows) {
+    if (!rows.length) return `<div class="empty-state">Nenhum resultado.</div>`;
+    return `
+      <div class="table-wrap">
+        <table>
+          <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.map(row => `<tr>${row.map(cell => `<td>${cell ?? "-"}</td>`).join("")}</tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // 1. Top empresas PageRank
+  $("#btn-top-empresas").addEventListener("click", async () => {
+    const container = $("#result-top-empresas");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/top-empresas");
+      const rows = (data.items || []).map(e => [
+        e.razao_social || e.id,
+        fmtNumber(e.gds_pagerank),
+        e.gds_comunidade ?? "-",
+      ]);
+      container.innerHTML = renderTable(["Empresa", "PageRank", "Comunidade"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+
+  // 2. Top parlamentares
+  $("#btn-top-parlamentares").addEventListener("click", async () => {
+    const container = $("#result-top-parlamentares");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/top-parlamentares");
+      const rows = (data.items || []).map(p => [
+        p.nome_autor || p.id,
+        fmtNumber(p.gds_pagerank),
+        fmtNumber(p.gds_betweenness),
+      ]);
+      container.innerHTML = renderTable(["Parlamentar", "PageRank", "Betweenness"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+
+  // 3. Comunidades suspeitas
+  $("#btn-comunidades-suspeitas").addEventListener("click", async () => {
+    const container = $("#result-comunidades-suspeitas");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/comunidades-suspeitas");
+      const rows = (data.items || []).map(i => [
+        i.empresa_razao_social || i.empresa,
+        i.empresa2_razao_social || i.empresa2,
+        i.parlamentar_nome || i.parlamentar,
+        i.municipio_nome || i.municipio,
+      ]);
+      container.innerHTML = renderTable(["Empresa A", "Empresa B", "Parlamentar", "Município"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+
+  // 4. Empresas similares com sanção
+  $("#btn-empresas-similares").addEventListener("click", async () => {
+    const container = $("#result-empresas-similares");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/empresas-similares");
+      const rows = (data.items || []).map(i => [
+        i.empresa_a_razao_social || i.empresa_a,
+        i.empresa_b_razao_social || i.empresa_b,
+        Number(i.score).toFixed(4),
+      ]);
+      container.innerHTML = renderTable(["Empresa A", "Empresa B", "Score Similaridade"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+
+  // 5. Servidores sócios de empresas sancionadas
+  $("#btn-servidores-socios").addEventListener("click", async () => {
+    const container = $("#result-servidores-socios");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/servidores-socios");
+      const rows = (data.items || []).map(i => [
+        i.pessoa_nome || i.pessoa,
+        i.orgao_exercicio || "-",
+        i.empresa_razao_social || i.empresa,
+        i.tipo_sancao || "-",
+      ]);
+      container.innerHTML = renderTable(["Servidor", "Órgão", "Empresa", "Tipo Sanção"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+
+  // 6. Intermediários alta betweenness
+  $("#btn-intermediarios").addEventListener("click", async () => {
+    const container = $("#result-intermediarios");
+    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+    try {
+      const data = await apiFetch("/insights/intermediarios");
+      const rows = (data.items || []).map(i => [
+        i.pessoa_nome || i.pessoa,
+        fmtNumber(i.gds_betweenness),
+        i.gds_comunidade ?? "-",
+      ]);
+      container.innerHTML = renderTable(["Pessoa", "Betweenness", "Comunidade"], rows);
+    } catch (error) {
+      container.innerHTML = `<div class="error-state">${error.message}</div>`;
+    }
+  });
+}
+
 window.DabertoFrontend = {
   buildShell,
   mountSearchPage,
@@ -1540,4 +1726,5 @@ window.DabertoFrontend = {
   mountProfilePage,
   mountCorruptionPage,
   mountPipelinesPage,
+  mountInsightsPage,
 };
