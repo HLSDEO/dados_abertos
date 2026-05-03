@@ -1600,36 +1600,61 @@ function mountInsightsPage() {
   `;
 
   // Renderizador de tabela simples
-  function renderTable(headers, rows) {
+  // rows[i][j] pode ser: string | number | { id, label }
+  // linkColumns: { headerName: { tipo: "Empresa"|"Pessoa"|"Parlamentar" } }
+  function renderTable(headers, rows, linkColumns = {}) {
     if (!rows.length) return `<div class="empty-state">Nenhum resultado.</div>`;
     return `
       <div class="table-wrap">
         <table>
           <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
           <tbody>
-            ${rows.map(row => `<tr>${row.map(cell => `<td>${cell ?? "-"}</td>`).join("")}</tr>`).join("")}
+            ${rows.map(row => `
+              <tr>${row.map((cell, idx) => {
+                const headerKey = headers[idx];
+                const config = linkColumns[headerKey];
+                if (config && cell) {
+                  let id, label;
+                  if (typeof cell === "object" && cell !== null && cell.id !== undefined) {
+                    id = cell.id;
+                    label = cell.label;
+                  } else {
+                    id = cell;
+                    label = cell;
+                  }
+                  const href = buildProfileUrl(config.tipo, id);
+                  return `<td><a class="mono" href="${href}" style="color:var(--blue,#38bdf8);text-decoration:none;">${label ?? id}</a></td>`;
+                }
+                const val = (typeof cell === "object" && cell !== null) ? (cell.label ?? cell.id ?? "-") : cell;
+                return `<td>${val ?? "-"}</td>`;
+              }).join("")}</tr>
+            `).join("")}
           </tbody>
         </table>
       </div>
     `;
   }
 
-  // 1. Top empresas PageRank
-  $("#btn-top-empresas").addEventListener("click", async () => {
-    const container = $("#result-top-empresas");
-    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
-    try {
-      const data = await apiFetch("/insights/top-empresas");
-      const rows = (data.items || []).map(e => [
-        e.razao_social || e.id,
-        fmtNumber(e.gds_pagerank),
-        e.gds_comunidade ?? "-",
-      ]);
-      container.innerHTML = renderTable(["Empresa", "PageRank", "Comunidade"], rows);
-    } catch (error) {
-      container.innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  });
+   // 1. Top empresas PageRank
+   $("#btn-top-empresas").addEventListener("click", async () => {
+     const container = $("#result-top-empresas");
+     container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+     try {
+       const data = await apiFetch("/insights/top-empresas");
+       const rows = (data.items || []).map(e => [
+         { id: e.id, label: e.razao_social || e.id },
+         fmtNumber(e.gds_pagerank),
+         e.gds_comunidade ?? "-",
+       ]);
+       container.innerHTML = renderTable(
+         ["Empresa", "PageRank", "Comunidade"],
+         rows,
+         { Empresa: { tipo: "Empresa" } }
+       );
+     } catch (error) {
+       container.innerHTML = `<div class="error-state">${error.message}</div>`;
+     }
+   });
 
   // 2. Top parlamentares
   $("#btn-top-parlamentares").addEventListener("click", async () => {
@@ -1648,58 +1673,70 @@ function mountInsightsPage() {
     }
   });
 
-  // 3. Comunidades suspeitas
-  $("#btn-comunidades-suspeitas").addEventListener("click", async () => {
-    const container = $("#result-comunidades-suspeitas");
-    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
-    try {
-      const data = await apiFetch("/insights/comunidades-suspeitas");
-      const rows = (data.items || []).map(i => [
-        i.empresa_razao_social || i.empresa,
-        i.empresa2_razao_social || i.empresa2,
-        i.parlamentar_nome || i.parlamentar,
-        i.municipio_nome || i.municipio,
-      ]);
-      container.innerHTML = renderTable(["Empresa A", "Empresa B", "Parlamentar", "Município"], rows);
-    } catch (error) {
-      container.innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  });
+   // 3. Comunidades suspeitas
+   $("#btn-comunidades-suspeitas").addEventListener("click", async () => {
+     const container = $("#result-comunidades-suspeitas");
+     container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+     try {
+       const data = await apiFetch("/insights/comunidades-suspeitas");
+       const rows = (data.items || []).map(i => [
+         { id: i.empresa, label: i.empresa_razao_social || i.empresa },
+         { id: i.empresa2, label: i.empresa2_razao_social || i.empresa2 },
+         i.parlamentar_nome || i.parlamentar,
+         i.municipio_nome || i.municipio,
+       ]);
+       container.innerHTML = renderTable(
+         ["Empresa A", "Empresa B", "Parlamentar", "Município"],
+         rows,
+         { "Empresa A": { tipo: "Empresa" }, "Empresa B": { tipo: "Empresa" } }
+       );
+     } catch (error) {
+       container.innerHTML = `<div class="error-state">${error.message}</div>`;
+     }
+   });
 
-  // 4. Empresas similares com sanção
-  $("#btn-empresas-similares").addEventListener("click", async () => {
-    const container = $("#result-empresas-similares");
-    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
-    try {
-      const data = await apiFetch("/insights/empresas-similares");
-      const rows = (data.items || []).map(i => [
-        i.empresa_a_razao_social || i.empresa_a,
-        i.empresa_b_razao_social || i.empresa_b,
-        Number(i.score).toFixed(4),
-      ]);
-      container.innerHTML = renderTable(["Empresa A", "Empresa B", "Score Similaridade"], rows);
-    } catch (error) {
-      container.innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  });
+   // 4. Empresas similares com sanção
+   $("#btn-empresas-similares").addEventListener("click", async () => {
+     const container = $("#result-empresas-similares");
+     container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+     try {
+       const data = await apiFetch("/insights/empresas-similares");
+       const rows = (data.items || []).map(i => [
+         { id: i.empresa_a, label: i.empresa_a_razao_social || i.empresa_a },
+         { id: i.empresa_b, label: i.empresa_b_razao_social || i.empresa_b },
+         Number(i.score).toFixed(4),
+       ]);
+       container.innerHTML = renderTable(
+         ["Empresa A", "Empresa B", "Score Similaridade"],
+         rows,
+         { "Empresa A": { tipo: "Empresa" }, "Empresa B": { tipo: "Empresa" } }
+       );
+     } catch (error) {
+       container.innerHTML = `<div class="error-state">${error.message}</div>`;
+     }
+   });
 
-  // 5. Servidores sócios de empresas sancionadas
-  $("#btn-servidores-socios").addEventListener("click", async () => {
-    const container = $("#result-servidores-socios");
-    container.innerHTML = `<div class="loading-state">Carregando...</div>`;
-    try {
-      const data = await apiFetch("/insights/servidores-socios");
-      const rows = (data.items || []).map(i => [
-        i.pessoa_nome || i.pessoa,
-        i.orgao_exercicio || "-",
-        i.empresa_razao_social || i.empresa,
-        i.tipo_sancao || "-",
-      ]);
-      container.innerHTML = renderTable(["Servidor", "Órgão", "Empresa", "Tipo Sanção"], rows);
-    } catch (error) {
-      container.innerHTML = `<div class="error-state">${error.message}</div>`;
-    }
-  });
+   // 5. Servidores sócios de empresas sancionadas
+   $("#btn-servidores-socios").addEventListener("click", async () => {
+     const container = $("#result-servidores-socios");
+     container.innerHTML = `<div class="loading-state">Carregando...</div>`;
+     try {
+       const data = await apiFetch("/insights/servidores-socios");
+       const rows = (data.items || []).map(i => [
+         i.pessoa_nome || i.pessoa,
+         i.orgao_exercicio || "-",
+         { id: i.empresa, label: i.empresa_razao_social || i.empresa },
+         i.tipo_sancao || "-",
+       ]);
+       container.innerHTML = renderTable(
+         ["Servidor", "Órgão", "Empresa", "Tipo Sanção"],
+         rows,
+         { Empresa: { tipo: "Empresa" } }
+       );
+     } catch (error) {
+       container.innerHTML = `<div class="error-state">${error.message}</div>`;
+     }
+   });
 
   // 6. Intermediários alta betweenness
   $("#btn-intermediarios").addEventListener("click", async () => {
