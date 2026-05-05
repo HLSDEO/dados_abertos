@@ -655,10 +655,10 @@ function mountGraphPage(cytoscape) {
 
       try {
         if (!window.jspdf) {
-          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+           await loadScript("/vendor/js/jspdf.umd.min.js");
         }
         if (!window.html2canvas) {
-          await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+           await loadScript("/vendor/js/html2canvas.min.js");
         }
 
         const { jsPDF } = window.jspdf;
